@@ -1,0 +1,358 @@
+global:
+  image:
+    registry: "localhost:5000"
+  tagCluster: "onprem"
+  tagEnvironment: "dev"
+  tagNamespace: "" # Default to chart namespace
+
+aws:
+  enabled: false
+externalDns:
+  enabled: false
+
+secrets:
+  # Unneeded secrets in fft deployments
+  databaseConnection:
+    name: ""
+  geocodeStreets:
+    name: ""
+  usageDbConnection:
+    name: ""
+  minisiteFeedbackDb:
+    name: ""
+  minisiteGoogleAnalyticsId:
+    name: ""
+
+redis:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+
+  #Add storage class for redis for persistent storage if desired
+  dataVolumeStorageClass: ""
+finchdb:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  data:
+    initCopyEnabled: true
+    dms:
+      enabled: true
+    interestareas:
+      enabled: true
+  resources:
+    requests:
+      memory: 40Gi
+      cpu: 10
+    limits:
+      memory: 40Gi
+      cpu: 10
+disambig:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 4
+      memory: 8Gi
+    requests:
+      cpu: 4
+      memory: 8Gi
+featureextraction:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 8
+      memory: 16Gi
+    requests:
+      cpu: 4
+      memory: 8Gi
+geo:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 1
+      memory: 4Gi
+    requests:
+      cpu: 1
+      memory: 4Gi
+fft:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  image:
+    repository: finchai/ees
+    tag: "17.3.0"
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 16
+      memory: 31Gi
+    requests:
+      cpu: 5
+      memory: 10Gi
+fftws:
+  enabled: true
+  image:
+    repository: finchai/gateway
+    tag: "7.0.3"
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  enableLogging: true
+  ingress:
+    enabled: false
+  loggingSidecar:
+    enabled: false
+minisite:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  envSENTIMENT_MODEL: "news3"
+  envMAIL_SERVER_DISABLE: "true"
+  # TODO: Must set this to a value that will allow a connection to fftws on the /api path
+  #envWEB_SERVICE_URL: "http://my-fftws.example.com:12345""
+headline:
+  enabled: false
+articleextraction:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 1
+      memory: 2Gi
+entitycorrection:
+  enabled: false
+relationextraction_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+quotationextraction:
+  enabled: false
+relationextraction:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 10
+      memory: 10Gi
+    requests:
+      cpu: 8
+      memory: 8Gi
+fintopic:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 4
+      memory: 10Gi
+    requests:
+      cpu: 1
+      memory: 8Gi
+coref:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 8
+      memory: 18Gi
+    requests:
+      cpu: 5
+      memory: 16Gi
+nationality:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 2
+      memory: 8Gi
+    requests:
+      cpu: 1
+      memory: 6Gi
+sentiment:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+summarization:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 4
+      memory: 4Gi
+    limits:
+      cpu: 5
+      memory: 5Gi
+tagger_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+tagger_esg:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 2
+      memory: 5Gi
+    requests:
+      cpu: 2
+      memory: 5Gi
+tagger_naics:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 4
+      memory: 10Gi
+    requests:
+      cpu: 2
+      memory: 4Gi
+tagger_ia:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 2
+      memory: 7Gi
+    requests:
+      cpu: 2
+      memory: 5Gi
+tagger_iptc:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+  resources:
+    limits:
+      cpu: 2
+      memory: 5Gi
+    requests:
+      cpu: 2
+      memory: 5Gi
+tika:
+  enabled: false
+convertdoc:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+ipaddress:
+  enabled: false
+langdetect:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+link:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  ingress:
+    enabled: false
+translation_router:
+  enabled: false
+trans_nl:
+  enabled: false
+trans_ar:
+  enabled: false
+trans_de:
+  enabled: false
+trans_es:
+  enabled: false
+trans_fr:
+  enabled: false
+trans_ru:
+  enabled: false
+trans_uk:
+  enabled: false
+trans_zh:
+  enabled: false
+ner_router:
+  enabled: false
+ner_de:
+  enabled: false
+ner_es:
+  enabled: false
+ner_fr:
+  enabled: false
+ner_nl:
+  enabled: false

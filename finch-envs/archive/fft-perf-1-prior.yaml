@@ -1,0 +1,366 @@
+global:
+  image:
+    registry: "767397961866.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "qa-1"
+  tagEnvironment: "fft-perf-1"
+  tagNamespace: "" # Default to chart namespace
+
+baseDomain: "finchai.com"
+additionalDomains: ["qa.finchai.com"]
+
+anchors:
+  tagEnv: &Env fft-perf-1
+  fftVersion: &FFTVersion "218"
+
+externalDns:
+  enabled: true
+  hostnamePrefix: "eks-"
+
+externalSecrets:
+  enabled: true
+
+secrets:
+  geocodeStreets:
+    externalSecrets:
+      remoteId: "/finch/fft/qa-1/geocode/apikey"
+  databaseConnection:
+    externalSecrets:
+      remoteId: "" #"/finch/fft/qa-1/fftws/database_connection"
+  usageDbConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/qa-1/fftws/usage_db_conn"
+  fftDemositeFeedbackDb:
+    externalSecrets:
+      remoteId: "/finch/fft/qa-1/minisite/feedback_db"
+  fftDemositeGoogleAnalyticsId:
+    externalSecrets:
+      remoteId: "/finch/fft/qa-1/minisite/google_analytics"
+  usersJson:
+    name: ""
+  sslCert: 
+    name: ""
+  usersLicense: 
+    name: "" 
+  reportsOpenAiKey:
+    externalSecrets:
+      remoteId: "/finch/fa/qa/reports/openai-api-key"
+  reportsTavilyKey:
+    externalSecrets:
+      remoteId: "/finch/fa/qa-1/reports/tavily/key"
+
+aws:
+  enabled: true
+  acmCertArn: "arn:aws:acm:us-east-1:533266973280:certificate/46217010-c61c-4fe8-8fc7-d7ae397fa42f" # finchai
+  additionalAcmCerts: ["arn:aws:acm:us-east-1:533266973280:certificate/d13608ac-4c7b-475a-a36a-9dc397fc350d"]
+  albSchemeDefault: "internal"  
+
+agentic_entity_services:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+  env: 
+    FFTENRICH_URL: "https://ees-service.perf-ssl-testing.svc.cluster.local:443/enrich/v3"
+    KB_URL:  "https://finchdb-service.perf-ssl-testing.svc.cluster.local:443/api/v1/collections/{collection}/documents/query"
+
+convert_doc:
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+
+coref:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+
+disambig:
+  enabled: true
+  image:
+    tag: "1.12.1"
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+  resources:
+    limits:
+      cpu: 16
+      memory: 31Gi
+    requests:
+      cpu: 16
+      memory: 31Gi
+
+ees:
+  enabled: true
+  image:
+    tag: "19.6.0"
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+  env:
+    EES_TIMEOUT_TAGGERS: "360000"
+    EES_TIMEOUT_PLUGINS: "360000"
+    ETCD_TARGET: "https://etcd.perf-ssl-testing.svc.cluster.local:2379"   
+    NER_LANGS: "de,en"
+  resources:
+    limits:
+      cpu: 16
+      memory: 31Gi
+    requests:
+      cpu: 16
+      memory: 31Gi
+
+extract_article:
+  enabled: true
+  ingress:
+    enabled: false
+  replicaCount: 1
+
+feature_extraction:
+  enabled: true
+  image:
+    tag: "2.6.0"  
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+
+fft_demosite:
+  nodePort: ""
+  enabled: true
+  ingress:
+    enabled: true
+    albScheme: "internal"
+  replicaCount: 1
+  pdbMinAvail: 0
+  env: 
+    WEB_SERVICE_URL: "https://eks-text-api-perf-ssl-testing.qa.finchai.com"
+
+
+fft_ws:
+  nodePort: ""
+  enabled: true
+  image:
+    tag: "11.11.2"  
+  ingress:
+    enabled: true
+    albScheme: "internal"
+  replicaCount: 1
+  pdbMinAvail: 1
+  #redisConnection: "redis.qa.finchai.com:6379"
+  redisConnection: "qa-valkey-sxi44i.serverless.use1.cache.amazonaws.com:6379"
+  metricsRedisHost: "none"
+  operationsEnvironment: "fft-qa-1"
+  extraAnnotations:
+    fluentbit.io/exclude: "true"   
+  logAllDetail: false
+  diagLogLevel: "info"
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.inf.finchai.com"
+  # This value is passed from the top level values.yaml and
+  # is configured via the package-json file
+  # packageJsonConfigMapName: ""
+  #env:
+  #  ARTICLE_EXTRACTOR_URL: "http://eks-extract-article-prod-b.prod-public.finchai.com:9191/api/v1/extract-article"
+
+  extraEnv:
+     - name: SSM_AUTH_KEY
+       value: /finch/fft/qa-1/fft-auth
+     - name: REGION
+       value: "us-east-1"
+
+finchdb:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 0
+  pdbMinAvail: 0
+  image:
+    repository: finchai/finchdb
+    tag: "229.1"  
+  data:
+    initCopyEnabled: true
+    dms:
+      enabled: true
+      image:
+        tag: "5.1.0"  
+
+#finchdb_writeable:
+#  enabled: true
+#  replicaCount: 1
+#  env:
+#    DMS_KV_HOST: "https://etcd.perf-ssl-testing.svc.cluster.local:2379"
+#    DMS_FFT_HOST: "https://ees-service.perf-ssl-testing.svc.cluster.local"
+#    DMS_FDB_REST_HOST: "https://finchdb-rest-service.perf-ssl-testing.svc.cluster.local"
+
+
+finchdb_writeable:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  image:
+    repository: finchai/finchdb-upgrade #finchai/finchdb-lite
+    tag: "232.3"
+  data:
+    initCopyEnabled: true
+    dms:
+      enabled: true
+  env:
+    DMS_KV_HOST: "etcd.fft-perf-1.svc.cluster.local:2379"
+    DMS_FDB_REST_HOST: "finchdb-service.fft-perf-1.svc.cluster.local"
+    DMS_FDB_REST_PORT: "443"
+    DMS_FFT_HOST: "https://ees-service.fft-perf-1.svc.cluster.local"
+
+
+
+
+fin_topic_sentiment:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+
+geo:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+
+lang_detect:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+
+nationality:
+  enabled: false
+
+ner_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+  ingress:
+    enabled: true
+
+ner_de:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+ner_en:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+
+ner_es:
+  enabled: false
+
+ner_fr:
+  enabled: false
+
+ner_nl:
+  enabled: false
+
+relationships_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 1
+  ingress:
+    enabled: true
+
+quotations:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+
+relationships:
+  replicaCount: 1
+  pdbMinAvail: 0
+
+sentiment:
+  ingress:
+    enabled: true
+  replicaCount: 0
+  pdbMinAvail: 0
+
+summarization:
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.inf.finchai.com"  
+  extraSelectorLabels:
+    compute-type: fargate
+
+tagger_router:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+tagger_biztop:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+
+tagger_iptc:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+translation_router:
+  enabled: true
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_ar:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_de:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_es:
+  enabled: false
+
+trans_fr:
+  enabled: false
+
+trans_nl:
+  enabled: false
+
+trans_ru:
+  enabled: false
+
+trans_uk:
+  enabled: false
+
+trans_zh:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+
+
+
+
+
+
+
+
+
+
+

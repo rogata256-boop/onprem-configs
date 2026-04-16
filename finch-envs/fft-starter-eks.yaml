@@ -1,0 +1,57 @@
+# ==============================================================================
+# FFT Starter Configuration — AWS EKS
+#
+# Use this file as a starting point for EKS deployments with:
+#   - AWS Application Load Balancer (ALB)
+#   - ExternalDNS (Route 53)
+#   - AWS Certificate Manager (ACM) for TLS
+#
+# Fill in all REQUIRED fields below, then install:
+#   ./install-finch-suite.sh --namespace finchai \
+#     --fft-extra-values finch-envs/fft-starter-eks.yaml
+#
+# For full configuration options see values.yaml and finch-envs/fft-onprem-eks-1.yaml.
+# For troubleshooting see docs/TROUBLESHOOTING.md.
+# ==============================================================================
+
+# REQUIRED: Your base domain for DNS records (e.g. yourcompany.com)
+baseDomain: ""
+
+aws:
+  enabled: true
+  # REQUIRED: ACM certificate ARN for your domain (must be in the same AWS region)
+  # Find it in AWS Console → Certificate Manager → copy the ARN
+  acmCertArn: ""
+
+global:
+  image:
+    # REQUIRED: ECR registry URL for your account and region
+    # Format: <account-id>.dkr.ecr.<region>.amazonaws.com
+    registry: ""
+
+secrets:
+  usersJson:
+    # REQUIRED: Name of the k8s secret holding your users.json license file.
+    # Create it before installing:
+    #   kubectl create secret generic users-json --namespace <ns> --from-file=users.json=users.json
+    # For OIDC deployments that do not use a users.json secret, set required: false instead.
+    name: "users-json"
+
+# OPTIONAL: Enable ExternalDNS to automatically create Route 53 records
+externalDns:
+  enabled: true
+
+# OPTIONAL: Enable ExternalSecrets to pull secrets from AWS Secrets Manager
+externalSecrets:
+  enabled: false
+
+# OPTIONAL: Enable GPU node scheduling (required for coref, ner_en, relationships, etc.)
+# Ensure GPU nodes are tainted with: kubectl taint nodes <node> nvidia.com/gpu=present:NoSchedule
+# podTypeResources:
+#   gpu:
+#     enabled: true
+
+# OPTIONAL: Enable the demosite UI
+# fft_demosite:
+#   env:
+#     WEB_SERVICE_URL: "https://api.yourcompany.com"  # browser-accessible API URL

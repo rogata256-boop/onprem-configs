@@ -1,0 +1,481 @@
+# ==============================================================================
+# FFT On-Prem Non-EKS Environment Values
+#
+# Use this file when deploying FFT on a plain Kubernetes cluster (e.g. kubeadm
+# on EC2 or bare-metal VMs) WITHOUT the following AWS-managed dependencies:
+#
+#   - No ALB / cloud load balancer
+#   - No Ingress controller (all ingress resources disabled)
+#   - No ExternalDNS
+#   - No ExternalSecrets (AWS SSM / Secrets Manager)
+#   - No AWS Valkey / ElastiCache
+#   - No outbound internet access (fully air-gapped)
+#
+# Services communicate via cluster-internal DNS:
+#   <service-name>.<namespace>.svc.cluster.local
+#
+# External access to the demosite and API is provided via Kubernetes NodePort
+# services (ports 30080 and 30081 by default).
+#
+# BEFORE INSTALLING — pre-create all required secrets:
+#   kubectl create secret generic users-json --namespace fft \
+#     --from-file=users.json=users.json \
+#     --dry-run=client -o yaml | kubectl apply -f -
+#
+# REQUIRED customer actions (search for REQUIRED below):
+#   1. Set global.image.registry to your local container registry
+#   2. Set fft_ws.redisConnection to your Redis host:port
+#   3. Set fft_demosite.env.WEB_SERVICE_URL to the browser-accessible API URL
+# ==============================================================================
+
+global:
+  image:
+    # REQUIRED: Set to your local/on-prem container registry.
+    # Images must be mirrored from ECR before deployment.
+    # Example: registry: "registry.customer.internal"
+    registry: ""
+  tagCluster: "onprem-ec2"
+  tagEnvironment: "fft-onprem"
+  tagNamespace: "" # Defaults to chart namespace
+
+baseDomain: "" # Set to your internal domain if used for DNS
+
+# ExternalDNS is an EKS / Route 53 integration — disabled for non-EKS
+externalDns:
+  enabled: false
+
+# ExternalSecrets pulls from AWS SSM / Secrets Manager — disabled for non-EKS
+# All secrets must be pre-created manually with kubectl before deployment.
+externalSecrets:
+  enabled: false
+
+secrets:
+  # REQUIRED: users.json license secret must be pre-created before install.
+  # See INSTALLATION.md — Secrets Configuration.
+  usersJson:
+    name: "users-json"
+
+  # Optional: set the k8s secret name if the relevant secret is pre-created.
+  # Leave as "" to omit the secret from the deployment.
+  geocodeStreets:
+    name: ""
+  databaseConnection:
+    name: ""
+  usageDbConnection:
+    name: ""
+  fftDemositeFeedbackDb:
+    name: ""
+  fftDemositeGoogleAnalyticsId:
+    name: ""
+  sslCert:
+    name: ""
+  usersLicense:
+    name: ""
+  reportsOpenAiKey:
+    name: ""
+  reportsTavilyKey:
+    name: ""
+
+# AWS ALB / ACM integration — disabled for non-EKS
+aws:
+  enabled: false
+
+# ==============================================================================
+# Services — ingress disabled for all services.
+# Backend NLP services are ClusterIP (cluster-internal only).
+# fft_demosite and fft_ws expose NodePorts for direct browser / API access.
+# ==============================================================================
+
+agentic_entity_services:
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  env:
+    ENABLE_GEO_TAGGER: "true"
+
+convert_doc:
+  image:
+    tag: "1.0.13"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+coref:
+  enabled: true
+  image:
+    tag: "1.0.37"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  env:
+    TS_JOB_QUEUE_SIZE: "8"
+
+disambig:
+  enabled: true
+  image:
+    tag: "1.16.0"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  resources:
+    limits:
+      cpu: 16
+      memory: 31Gi
+    requests:
+      cpu: 16
+      memory: 31Gi
+  env:
+    DISAMBIG_DEBUG: "false"
+
+ees:
+  enabled: true
+  image:
+    tag: "20.0.0"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  env:
+    EES_TIMEOUT_TAGGERS: "360000"
+    EES_TIMEOUT_PLUGINS: "360000"
+    LOCATION_FIND: "true"
+  resources:
+    limits:
+      cpu: 8
+      memory: 16Gi
+    requests:
+      cpu: 8
+      memory: 16Gi
+
+extract_article:
+  enabled: true
+  image:
+    tag: "1.0.12"
+  ingress:
+    enabled: false
+
+feature_extraction:
+  enabled: true
+  image:
+    tag: "2.6.3"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+# ------------------------------------------------------------------------------
+# fft_demosite — React UI front-end
+#
+# Exposed on NodePort 30080.  Access via: http://<node-ip>:30080
+# ------------------------------------------------------------------------------
+fft_demosite:
+  # NodePort for direct browser access without an ingress controller.
+  # Accessible at http://<any-cluster-node-ip>:30080
+  nodePort: "30080"
+  enabled: true
+  image:
+    tag: "4.28.0"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  env:
+    # REQUIRED: Set to the browser-accessible URL of the fft_ws API.
+    # For NodePort access this is typically: http://<node-ip>:30081
+    # This URL must be reachable from the end-user's browser.
+    WEB_SERVICE_URL: "" # e.g. "http://fft-node.customer.internal:30081"
+
+    # Air-gapped / restricted environment settings:
+    # Disable the embedded map widget (requires internet).
+    MAP_DISABLE: "true"
+    # Disable all outbound external URL links in the UI.
+    EXTERNAL_URLS_DISABLE: "true"
+    # Maximum number of documents shown in the Recent Documents list.
+    MAX_RECENT_DOCS: "12"
+    # Disable mail features if no SMTP relay is available.
+    MAIL_SERVER_DISABLE: "true"
+
+    # Optional — uncomment and set as needed:
+    #MAIL_SERVER_HOST: "smtp.customer.internal"
+    #MAIL_SERVER_PORT: "25"
+    #MAIL_SERVER_FROM_EMAIL: "no-reply@customer.internal"
+    #SUPPORT_EMAIL: "support@customer.internal"
+    #SALES_EMAIL: "sales@customer.internal"
+    #FEEDBACK_EMAIL: "feedback@customer.internal"
+    #SENTIMENT_MODEL: "financialTopics"
+    #SUPPORTED_SOURCE_TRANSLATIONS: "nl,fr,de,es,ru,uk,ar,zh"
+
+# ------------------------------------------------------------------------------
+# fft_ws — Core API gateway / orchestrator
+#
+# Exposed on NodePort 30081.  Access via: http://<node-ip>:30081
+#
+# REQUIRED: Redis must be available before deployment. Deploy Redis in-cluster
+# or on a separate VM and set redisConnection below.
+# Example in-cluster Redis: kubectl apply -f <your-redis-deployment>.yaml
+# ------------------------------------------------------------------------------
+fft_ws:
+  # NodePort for direct API access without an ingress controller.
+  # Accessible at http://<any-cluster-node-ip>:30081
+  nodePort: "30081"
+  enabled: true
+  image:
+    tag: "11.13.8"
+  ingress:
+    enabled: false
+  logAllDetail: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+  # Redis is not provided for non-EKS on-prem deployments.
+  # Set to "none" to disable Redis-backed session caching.
+  redisConnection: "none"
+
+  metricsRedisHost: "none"
+  operationsEnvironment: "fft-onprem"
+
+  # No logging sidecar — Graylog is an external service not available in
+  # an air-gapped environment.
+  loggingSidecar:
+    enabled: false
+
+  # No extra pod annotations needed without Fluent Bit / ALB
+  extraAnnotations: {}
+
+  diagLogLevel: "info"
+
+  resources:
+    limits:
+      cpu: 512m
+      memory: 2Gi
+    requests:
+      cpu: 512m
+      memory: 2Gi
+
+  env:
+    KB_DMS_URL: "none"
+
+  extraEnv:
+    # SSM_AUTH_KEY: 'none' disables AWS SSM-based auth key lookup.
+    - name: SSM_AUTH_KEY
+      value: "none"
+    # Maximum request body size in KB.
+    - name: MAX_REQUEST_SIZE_KB
+      value: "2024"
+    # Languages supported for translation.
+    - name: TRANS_LANGS
+      value: "en,ar,ru,zh"
+    # Encrypted input handling.
+    - name: ENCRYPTED_INPUT
+      value: "true"
+    # NOTE: REDIS_CA_CERT_URL and REGION are intentionally omitted.
+    # REDIS_CA_CERT_URL downloads an Amazon Root CA cert from the internet.
+    # REGION is not required outside of AWS.
+    # If your Redis uses TLS with a custom CA, add:
+    # - name: USE_REDIS_TLS
+    #   value: "true"
+    # - name: REDIS_CA_CERT
+    #   value: "<base64-encoded-ca-cert>"  # or mount via a volume
+
+finchdb:
+  enabled: true
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  image:
+    repository: finchai/finchdb
+    tag: "240.0.onprem"
+  data:
+    initCopyEnabled: false
+    dms:
+      enabled: false
+
+finchdb_writeable:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 0
+  pdbMinAvail: 1
+  image:
+    repository: finchai/finchdb-lite
+    tag: "240.0.onprem"
+  data:
+    initCopyEnabled: true
+    dms:
+      enabled: true
+  env:
+    DMS_FDB_REST_PORT: "443"
+
+fin_topic_sentiment:
+  enabled: true
+  image:
+    tag: "1.1.51"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  env:
+    MT_REQUEST_TIMEOUT: "24"
+
+geo:
+  enabled: true
+  image:
+    tag: "5.12.21.Gaz.2.20"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+lang_detect:
+  enabled: true
+  image:
+    tag: "1.1.7"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+nationality:
+  enabled: false
+
+ner_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: false
+
+ner_de:
+  enabled: false
+
+ner_en:
+  enabled: true
+  image:
+    tag: "1.0.13"
+  replicaCount: 1
+  pdbMinAvail: 0
+  env:
+    MT_REQUEST_TIMEOUT: "4000"
+
+ner_es:
+  enabled: false
+
+ner_fr:
+  enabled: false
+
+ner_nl:
+  enabled: false
+
+relationships_router:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: false
+
+quotations:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+relationships:
+  enabled: true
+  image:
+    tag: "1.1.56"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+sentiment:
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+summarization:
+  image:
+    tag: "2.0.36"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  loggingSidecar:
+    enabled: false
+
+tagger_router:
+  enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+  ingress:
+    enabled: false
+
+tagger_biztop:
+  enabled: true
+  image:
+    tag: "1.0.9"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+tagger_iptc:
+  enabled: false
+  image:
+    tag: "1.0.12"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+translation_router:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_ar:
+  enabled: false
+  image:
+    tag: "1.1.22"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_de:
+  enabled: false
+  image:
+    tag: "1.1.22"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_es:
+  enabled: false
+  image:
+    tag: "1.1.24"
+
+trans_fr:
+  enabled: false
+  image:
+    tag: "1.1.24"
+
+trans_nl:
+  enabled: false
+  image:
+    tag: "1.1.24"
+
+trans_ru:
+  enabled: false
+  image:
+    tag: "1.1.22"
+
+trans_uk:
+  enabled: false
+  image:
+    tag: "1.1.22"
+
+trans_zh:
+  enabled: false
+  image:
+    tag: "1.1.25"
+  replicaCount: 1
+  pdbMinAvail: 0

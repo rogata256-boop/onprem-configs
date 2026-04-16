@@ -1,0 +1,93 @@
+redis:
+  ingress:
+    enabled: false
+finchdb:
+  ingress:
+    enabled: false
+disambig:
+  ingress:
+    enabled: false
+featureextraction:
+  ingress:
+    enabled: false
+geo:
+  ingress:
+    enabled: false
+fft:
+  ingress:
+    enabled: false
+fftws:
+  ingress:
+    enabled: true
+minisite:
+  ingress:
+    enabled: true
+headline:
+  ingress:
+    enabled: false
+articleextraction:
+  ingress:
+    enabled: false
+ner_router:
+  ingress:
+    enabled: false
+entitycorrection:
+  ingress:
+    enabled: false
+relationextraction_router:
+  ingress:
+    enabled: false
+fintopic:
+  ingress:
+    enabled: false
+coref:
+  ingress:
+    enabled: false
+nationality:
+  ingress:
+    enabled: false
+translation_router:
+  ingress:
+    enabled: false
+sentiment:
+  ingress:
+    enabled: false
+summarization:
+  ingress:
+    enabled: false
+tagger_ia:
+  ingress:
+    enabled: false
+tagger_router:
+  ingress:
+    enabled: false
+tagger_esg:
+  ingress:
+    enabled: false
+tagger_naics:
+  ingress:
+    enabled: false
+tagger_iptc:
+  ingress:
+    enabled: false
+tika:
+  ingress:
+    enabled: false
+convertdoc:
+  ingress:
+    enabled: false
+ipaddress:
+  ingress:
+    enabled: false
+langdetect:
+  ingress:
+    enabled: false
+link:
+  ingress:
+    enabled: false
+finchllm:
+  ingress:
+    enabled: false
+informationextraction:
+  ingress:
+    enabled: false

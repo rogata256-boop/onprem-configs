@@ -1,0 +1,223 @@
+global:
+  image:
+    registry: "652914333254.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "dev-east1"
+  tagEnvironment: "dev"
+  tagNamespace: "" # Default to chart namespace
+
+testing:
+  autodestroy:
+    enabled: true
+
+externalSecrets:
+  enabled: true
+
+secrets:
+  usersJson:
+    name: ""
+  usageDbConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/dev/fftws-usage-db"
+  minisiteFeedbackDb:
+    externalSecrets:
+      remoteId: "/finch/fft/dev/feedback-db"
+  geocodeStreets:
+    externalSecrets:
+      remoteId: "/finch/fft/geocode/apikey"
+  minisiteGoogleAnalyticsId:
+    externalSecrets:
+      remoteId: "/finch/fa/devint/google-analytics"
+  databaseConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/dev/fftws-database"
+
+
+externalDns:
+  enabled: true
+  hostnamePrefix: "eks-"
+
+aws:
+  enabled: true
+  # finchcomputing.com
+  acmCertArn: "arn:aws:acm:us-east-1:652914333254:certificate/540d85a3-090f-45b7-8709-4df2968fd5a7"
+  additionalAcmCerts:
+    - "arn:aws:acm:us-east-1:652914333254:certificate/f6fefd65-05ae-48fe-a352-c9a6b9ff46d7" # finchai.com
+
+finchdb:
+  replicaCount: 1
+  pdbMinAvail: 0
+  # -- DMS snapshot and volume size if envDMS is set to "TRUE"
+  data:
+    dms:
+      snapshotId: "snap-0b14b7c105d4e310f" # snapshot:kb-dms:v2.1.2
+    people:
+      snapshotId: "snap-0ebd4cf5e8d76e331" # snapshot:kb-people:v24.52.0
+    orgs:
+      snapshotId: "snap-07498962ade601e63" # snapshot:kb-orgs:v23.52.0
+    things:
+      enabled: true
+      mode: "READ"
+      snapshotId: "snap-0f56a3b066d7eb493" # snapshot:kb-things:v7.52.0
+    interestareas:
+      enabled: false
+      snapShotId: "snap-001a3f6dc6f07762b" # snapshot:kb-ia:v1.0.2
+
+redis:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+disambig:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+featureextraction:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+geo:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+fft:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  envUSER_REGEX_FILE: "/WEB-INF/resources/patterns-demo.json"
+fftws:
+  enabled: true
+  metricsRedisHost: "redis-feeds-1.wfgdo1.ng.0001.use1.cache.amazonaws.com"
+  loggingSidecar:
+    enabled: true
+    graylogHost: "graylog-nonprod-data.finchcomputing.com"
+  diagLogLevel: "debug"
+  replicaCount: 1
+  pdbMinAvail: 0
+  envIA_FDB_REST_URL: "http://finchdb-rest-service.feeds-resource:8080"
+  packageJsonConfigMapName: ""
+minisite:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+headline:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+articleextraction:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+ner_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+ner_nl:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  extraSelectorLabels:
+    compute-type: fargate
+ner_fr:
+  enabled: false
+ner_es:
+  enabled: false
+ner_de:
+  enabled: false
+entitycorrection:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+relationextraction_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+quotationextraction:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+relationextraction:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+fintopic:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+coref:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+nationality:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+translation_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_zh:
+  enabled: false
+trans_de:
+  enabled: false
+trans_ar:
+  enabled: false
+trans_uk:
+  enabled: false
+trans_ru:
+  enabled: false
+trans_fr:
+  enabled: false
+trans_es:
+  enabled: false
+trans_nl:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+sentiment:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+summarization:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_ia:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  envFINCHDB_URL: finchdb-rest-service.feeds-resource:8080
+tagger_esg:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_naics:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_iptc:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+tika:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+convertdoc:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+ipaddress:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+langdetect:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+link:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0

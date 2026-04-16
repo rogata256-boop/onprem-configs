@@ -1,0 +1,560 @@
+global:
+  image:
+    registry: "767397961866.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "qa-1"
+  tagEnvironment: "fft-perf-1"
+  tagNamespace: "" # Default to chart namespace
+
+baseDomain: "finchai.com"
+additionalDomains: ["qa.finchai.com"]
+
+anchors:
+  tagEnv: &Env fft-perf-1
+  fftVersion: &FFTVersion "218"
+
+externalDns:
+  enabled: true
+  hostnamePrefix: "eks-"
+
+externalSecrets:
+  enabled: true
+
+secrets:
+  geocodeStreets:
+    externalSecrets:
+      remoteId: "/finch/fft/qa-1/geocode/apikey"
+  databaseConnection:
+    externalSecrets:
+      remoteId: "" #"/finch/fft/qa-1/fftws/database_connection"
+  usageDbConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/qa-1/fftws/usage_db_conn"
+  fftDemositeFeedbackDb:
+    externalSecrets:
+      remoteId: "/finch/fft/qa-1/minisite/feedback_db"
+  fftDemositeGoogleAnalyticsId:
+    externalSecrets:
+      remoteId: "/finch/fft/qa-1/minisite/google_analytics"
+  usersJson:
+    name: "users-json"
+  sslCert: 
+    name: ""
+  usersLicense: 
+    name: "" 
+
+aws:
+  enabled: true
+  acmCertArn: "arn:aws:acm:us-east-1:533266973280:certificate/46217010-c61c-4fe8-8fc7-d7ae397fa42f" # finchai
+  additionalAcmCerts: ["arn:aws:acm:us-east-1:533266973280:certificate/d13608ac-4c7b-475a-a36a-9dc397fc350d"]
+  albSchemeDefault: "internal"  
+
+agentic_entity_services:
+  ingress:
+    enabled: false
+    image: 
+    tag: "1.0.13"
+  replicaCount: 0
+  pdbMinAvail: 0
+  env:
+    FFTENRICH_URL: "https://ees-service.fft-perf-1.svc.cluster.local:443/enrich/v3"
+    KB_URL: "https://finchdb-service.fft-perf-1.svc.cluster.local:443/api/v1/collections/{collection}/documents/query"
+    ENABLE_GEO_TAGGER: "true"
+
+convert_doc:
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+coref:
+  enabled: true
+  image:
+        tag: "1.0.35"
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+
+disambig:
+  enabled: true
+  image:
+    tag: "1.15.0"
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+  resources:
+    requests:
+      cpu: 250m
+      memory: 3.5Gi
+    limits:
+      cpu: 1000m
+      memory: 5Gi
+  env:
+    FDB_ROUTER_URL: "finchdb-rest-service.fft-perf-1.svc.cluster.local:8080"  
+
+ees:
+  enabled: true
+  image:
+    tag: "19.10.1.2"
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+  env:
+    EES_TIMEOUT_TAGGERS: "360000"
+    EES_TIMEOUT_PLUGINS: "360000"
+    NER_LANGS: "de,en"
+  resources:
+    requests:
+      cpu: 16
+      memory: 31Gi
+    limits:
+      cpu: 16
+      memory: 31Gi
+
+extract_article:
+  enabled: true
+  ingress:
+    enabled: false
+
+feature_extraction:
+  enabled: true
+  image:
+    tag: "2.6.1"  
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+
+fft_demosite:
+  nodePort: ""
+  enabled: true
+  image: 
+    tag: "4.26.0"
+  ingress:
+    enabled: true
+    albScheme: "internal"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+fft_ws:
+  nodePort: ""
+  enabled: true
+  image:
+    tag: "11.13.1"  
+  ingress:
+    enabled: true
+    albScheme: "internal"
+  replicaCount: 2
+  pdbMinAvail: 0
+  redisConnection: "qa-valkey-sxi44i.serverless.use1.cache.amazonaws.com:6379"
+  metricsRedisHost: "none"
+  operationsEnvironment: "fft-qa-1"
+  extraAnnotations:
+    fluentbit.io/exclude: "true"   
+  logAllDetail: false
+  diagLogLevel: "info"
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.inf.finchai.com"
+  # This value is passed from the top level values.yaml and
+  # is configured via the package-json file
+  # packageJsonConfigMapName: ""
+  env:
+    #ARTICLE_EXTRACTOR_URL: "http://eks-extract-article-prod-b.prod-public.finchai.com:9191/api/v1/extract-article"
+#     REDIS_CONN: "qa-valkey-sxi44i.serverless.use1.cache.amazonaws.com:6379"
+       AGENTIC_SERVICE_URL:  "https://agentic-entity-service.fft-qa-1.svc.cluster.local:443"
+       LANGS_DOCSENT: "en"
+       LANGS_ENTSENT: "en"
+       jwtTokenMaxAge: "2h"
+  extraEnv:
+     - name: SSM_AUTH_KEY
+       value: 'none' #/finch/fft/qa-1/fft-auth #'none'
+     - name: REGION
+       value: "us-east-1"
+#     - name: USE_REDIS_TLS
+#     value: "true"
+     - name: KB_EDIT_URL
+       value:  "http://10.6.16.59:8084"
+         #- name: LANGS_DOCSENT
+      #   value: "en"
+    #  - name: LANGS_ENTSENT
+    #    value: "en"    
+   
+
+
+finchdb:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  image:
+    repository: finchai/finchdb
+    tag: "237.4"  
+  data:
+    initCopyEnabled: false
+    dms:
+      enabled: false
+      image:
+        tag: "6.0.3"
+
+
+finchdb_writeable:
+  # -- Toggle deployment of finchdb_writable
+  enabled: false
+
+  # -- Toggle priorityClass of finchdb
+  priorityClass:
+    name: "high-priority-finchai"
+    value: 1000
+    globalDefault: false
+    description: "This is a high-priority class for the most critical workloads."
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- exposed ingress and service port for dms
+  portExternalDms: "444"
+  # -- exposed ingress and service port for the tcp router
+  portExternalRouter: "445"
+  # -- port used within the container
+  portContainer: "8080"
+  # -- port used within the container for dms
+  portContainerDms: "8083"
+  # -- port used within the container for the tcp router
+  portContainerRouter: "8444" #"40000"
+
+  ingress:
+    # -- Toggle finchdb ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/api/v1/systemHealth"
+    # -- ALB Target Group Attributes string
+    albTargetGroupAttributes: "load_balancing.algorithm.type=round_robin"
+    tlsEnabled: true 
+
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: finchdb-app
+  componentName: finchdb
+  image:
+    repository: finchai/finchdb-upgrade
+    tag: "232.3" #.1"
+  tagTag: finchdb
+
+  # -- The name of the ConfigMap containing the filter_file.json configuration; set to "" to disable mounting.  Requires a ConfigMap with .data["filter_file.json"] containing the filter_file.json configuration
+  filterFileJsonConfigMapName: "" #filter-file
+  # -- The path into which the ConfigMap will inject the filter_file.json configuration in the finchdb container, no trailing slash
+  filterFileJsonConfigMapFilepath: "/opt/FinchDB/data/filters"
+
+  # App Environment Vars
+  # -- "TRUE" or "FALSE" - controls whether the startup scripts run or not. Used for debugging
+  env: 
+    START: "TRUE"
+    MODE: "WRITE" 
+    MIGRATE: "FALSE" 
+    FILTER_ENTITIES: "FALSE" #FALSE
+    DMS_FFT_HOST: "ees-service.fft-perf-1.svc.cluster.local" #http
+    DMS_FFT_PORT: "443"
+    DMS: "TRUE" 
+    DMS_KV_HOST: "etcd.fft-perf-1.svc.cluster.local:2379" #"fft-deployment-etcd.finchai.svc.cluster.local:2379"  #"http://fft-deployment-etcd.finchai.svc.cluster.local:2379"
+  # -- Deprecated, use .data.dms.enabled; "TRUE" or "FALSE" - determines whether to install DMS or not. If "TRUE", the DMS data image must be present.
+  #envDMS: "TRUE"
+  # -- FQDN of the redis host. Only used if DMS is "TRUE"
+  # @default -- The Redis Service Hostname
+  #envDMS_REDIS_HOST: ""
+  # -- fft service host for DMS use. Only used if DMS is "TRUE"
+  #envDMS_KV_HOST: "http://fft-deployment-etcd.finchai.svc.cluster.local:2379"  #"http://etcd.finchai.svc.cluster.local:2379"
+  # @default -- The FFT Service Hostname
+  #envDMS_FFT_HOST: "fft-service.finchai.svc.cluster.local"
+  # -- PORT of the FFT host/ALB. Only used if DMS is "TRUE"
+  # @default -- The FFT Service Port
+  #envDMS_FFT_PORT: "8080"
+  # -- "READ", "WRITE"
+  #env: 
+  #  MODE: "WRITE"
+  # --- "TRUE" or "FALSE"
+  #env:
+  #  MIGRATE: "False" #"FALSE"
+  # --- "TRUE" or "FALSE"
+  #env:
+  #  FILTER_ENTITIES: "False"
+
+  data:
+    # -- Copy DMS service from init container for writable FDB;
+    initCopyEnabled: true
+    # -- Storage class name for data volumes
+    # @default -- "fdb-data-sc-<namespace>"
+    dataStorageClassName: ""
+    dms:
+      enabled: true
+      mountPath: /opt/FinchDB/dms
+      volumeSize: "1Gi"
+      image:
+        repository: finchai/finchdb-data-dms
+        tag: "6.0.2"
+    people:
+      enabled: true
+      # -- "READ", "WRITE", "NONE"
+      mode: "WRITE"
+    orgs:
+      enabled: true
+      # -- "READ", "WRITE", "NONE"
+      mode: "WRITE"
+    things:
+      enabled: true
+      # -- "READ", "WRITE", "NONE"
+      mode: "WRITE"
+    dataVolume:
+      enabled: true
+      mountPath: /opt/FinchDB/data
+      volumeSize: "30Gi"
+      resources: {}
+
+  resources:
+    requests:
+      memory: "50Gi"
+      cpu: "10000m"
+    limits:
+      memory: "50Gi"
+      cpu: "10000m"
+
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext:
+    runAsUser: 1024
+    runAsGroup: 1024
+    fsGroup: 1024
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+
+finchdb_writeable:
+  enabled: false
+  ingress:
+    enabled: true
+  replicaCount: 0
+  pdbMinAvail: 1
+  image:
+    repository: finchai/finchdb-upgrade #finchai/finchdb-lite
+    tag: "237.1"
+  data:
+    initCopyEnabled: true
+    dms:
+      enabled: true
+  env:
+    DMS_KV_HOST: "fft-release-etcd.fft-qa-1.svc.cluster.local:2379"
+    DMS_FDB_REST_HOST: "finchdb-service.fft-qa-1.svc.cluster.local"
+    DMS_FDB_REST_PORT: "443"
+    DMS_FFT_HOST: "https://ees-service.fft-qa-1.svc.cluster.local"
+
+fin_topic_sentiment:
+  enabled: true
+  image: 
+      tag: "1.1.50"
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+
+geo:
+  enabled: true
+  image: 
+      tag: "5.12.20.Gaz.2.20"
+  ingress:
+    enabled: true
+  replicaCount: 3
+  pdbMinAvail: 0
+
+lang_detect:
+  enabled: true
+  image: 
+      tag: "1.1.7"
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+
+nationality:
+  enabled: false
+
+ner_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+ner_de:
+  enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+
+ner_en:
+  enabled: true
+  image: 
+      tag: "1.0.12"
+  replicaCount: 3
+  pdbMinAvail: 0
+
+ner_es:
+  enabled: false
+
+ner_fr:
+  enabled: false
+
+ner_nl:
+  enabled: false
+
+relationships_router:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+quotations:
+  enabled: false
+  replicaCount: 2
+  pdbMinAvail: 0
+
+relationships:
+  enabled: true
+  image: 
+      tag: "1.1.51"
+  replicaCount: 2
+  pdbMinAvail: 0
+
+sentiment:
+  ingress:
+    enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+
+summarization:
+  ingress:
+    enabled: false
+    image:
+        tag: "2.0.36"
+  replicaCount: 2
+  pdbMinAvail: 0
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.inf.finchai.com"  
+  extraSelectorLabels:
+    compute-type: fargate
+
+tagger_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+tagger_biztop:
+  enabled: false
+  image: 
+      tag: "1.0.9"
+  replicaCount: 2
+  pdbMinAvail: 0
+
+tagger_iptc:
+  enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+
+translation_router:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_ar:
+  enabled: false
+  image: 
+      tag: "1.1.22"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_de:
+  enabled: false
+  image: 
+      tag: "1.1.22"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_es:
+  enabled: false
+  image: 
+      tag: "1.1.22"
+  replicaCount: 0
+  pdbMinAvail: 0
+
+trans_fr:
+  enabled: false
+  image: 
+      tag: "1.1.22"
+  replicaCount: 0
+  pdbMinAvail: 0
+
+trans_nl:
+  enabled: false
+  image: 
+      tag: "1.1.22"
+  replicaCount: 0
+  pdbMinAvail: 0
+
+trans_ru:
+  enabled: true
+  image: 
+      tag: "1.1.22"
+  replicaCount: 0
+  pdbMinAvail: 0
+
+trans_uk:
+  enabled: false
+  image: 
+      tag: "1.1.22"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+trans_zh:
+  enabled: false
+  image: 
+      tag: "1.1.22"
+  replicaCount: 1
+  pdbMinAvail: 0
+
+
+
+
+
+
+
+
+
+
+

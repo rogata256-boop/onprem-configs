@@ -1,0 +1,95 @@
+ees:
+  enabled: true
+  env:
+   RE_MODELS: "re" 
+   EES_TIMEOUT_TAGGERS: "86400000"
+   EES_TIMEOUT_PLUGINS: "86400000"
+   EES_TRUNC_SIZE_PLUGINS: "-1"
+  
+
+coref:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "8"
+
+disambig:
+  env:
+   FINCHDB_TIMEOUT: "86400000"
+   DISAMBIG_TIMEOUT: "86400000"
+   DISAMBIG_ENTITY_LIMIT: "10000"
+   DISAMBIG_PERSON_LIMIT: "100"  
+
+fft_ws:
+  env:
+    MAX_REQUEST_SIZE_KB: "2000000" # 2GB
+
+lang_detect:
+  env:
+   LANG_DETECT_TIMEOUT: "86400000"
+   LANG_DETECT_QUEUE_TIMEOUT: "86400000"
+
+ner_de:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+ner_en:
+  enabled: true
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+ner_es:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+ner_fr:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+ner_nl:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+quotations:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+relationships:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "8"
+
+tagger_biztop:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+trans_ar:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+trans_de:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+trans_es:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+trans_fr:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+trans_nl:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+trans_ru:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+trans_uk:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"
+
+trans_zh:
+  env:
+    MT_REQUEST_TIMEOUT: "86400000"

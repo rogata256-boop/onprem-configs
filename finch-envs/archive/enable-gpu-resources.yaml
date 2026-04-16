@@ -1,0 +1,5 @@
+podTypeResources:
+  gpu:
+    enabled: true
+  inf:
+    enabled: true

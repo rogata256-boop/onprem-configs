@@ -1,0 +1,354 @@
+# finch-envs/fft-onprem-large-docs-2.yaml
+#
+# Override file for processing large documents (1MB+) in on-premises deployments.
+# Apply on top of a base on-prem values file, e.g.:
+#
+#   ./install-fft-eks.sh ... --extra-values finch-envs/fft-onprem-large-docs.yaml
+#
+# Resource allocations for ees and disambig sourced from fft-perf-1.yaml.
+# Timeouts, probes, autoscaling, and all other service settings sourced from
+# fft-large-docs-example.yaml.
+# See LARGE_DOCUMENT_CONFIGURATION.md for full context and test metrics.
+
+# ==============================================================================
+# Web Service (fft_ws)
+# Increased request size limit + relaxed probes for long-running uploads.
+# ==============================================================================
+fft_ws:
+  replicaCount: 1
+  env:
+    MAX_REQUEST_SIZE_KB: "2000000"   # 2GB limit for large document uploads
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 10             # Up to 200 seconds grace during heavy processing
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+# ==============================================================================
+# Enrichment Engine Service (ees)
+# Full CPU/memory allocation (fft-perf-1.yaml), 1-hour timeouts, truncation
+# disabled for complete document analysis.
+# ==============================================================================
+ees:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 16
+      memory: 31Gi
+    limits:
+      cpu: 16
+      memory: 31Gi
+  env:
+    EES_TIMEOUT_TAGGERS: "3600000"   # 1 hour
+    EES_TIMEOUT_PLUGINS: "3600000"   # 1 hour
+    EES_TRUNC_SIZE_PLUGINS: "-1"     # Disable truncation for full document analysis
+    RE_MODELS: "re"
+    NER_LANGS: "en"
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 10
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+# ==============================================================================
+# Disambiguation Service (disambig)
+# Full CPU/memory allocation (fft-perf-1.yaml), 1-hour timeouts, raised entity
+# limits for large documents with many entities.
+# ==============================================================================
+disambig:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 16
+      memory: 31Gi
+    limits:
+      cpu: 16
+      memory: 31Gi
+  env:
+    FINCHDB_TIMEOUT: "3600000"       # 1 hour
+    DISAMBIG_TIMEOUT: "3600000"      # 1 hour
+    DISAMBIG_ENTITY_LIMIT: "10000"
+    DISAMBIG_PERSON_LIMIT: "100"
+
+# ==============================================================================
+# Language Detection Service
+# ==============================================================================
+lang_detect:
+  replicaCount: 1
+  env:
+    LANG_DETECT_TIMEOUT: "1h"
+    LANG_DETECT_QUEUE_TIMEOUT: "1h"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 1.5Gi
+    limits:
+      cpu: 500m
+      memory: 2.5Gi
+
+# ==============================================================================
+# Coreference Resolution
+# ==============================================================================
+coref:
+  replicaCount: 2
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"    # 1 hour
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "28"
+    TS_JOB_QUEUE_SIZE: "100"
+    COREF_MAX_PROCESSING_TIME: "360.0" # 6-minute timeout for 1MB+ documents
+  resources:
+    requests:
+      cpu: 3000m
+      memory: 5Gi
+    limits:
+      cpu: 3000m
+      memory: 6.5Gi
+
+# ==============================================================================
+# Named Entity Recognition (English)
+# Autoscaling enabled; LITSERVE concurrency tuned for large document throughput.
+# ==============================================================================
+ner_en:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"    # 1 hour
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "16"
+  resources:
+    requests:
+      cpu: 1500m
+      memory: 2Gi
+    limits:
+      cpu: 1500m
+      memory: 3Gi
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 10             # Up to 200 seconds of unresponsiveness during heavy loads
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+# ==============================================================================
+# Tagger Business/Topic
+# ==============================================================================
+tagger_biztop:
+  enabled: true
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"    # 1 hour
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 500m
+      memory: 1.5Gi
+
+# ==============================================================================
+# Relationships
+# Higher replica count for parallel extraction over large entity graphs.
+# ==============================================================================
+relationships:
+  replicaCount: 2
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"    # 1 hour
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "28"
+  resources:
+    requests:
+      cpu: 1500m
+      memory: 2Gi
+    limits:
+      cpu: 1500m
+      memory: 3Gi
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 15
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+# ==============================================================================
+# Financial Topic Sentiment
+# Higher memory for large financial document scoring.
+# ==============================================================================
+fin_topic_sentiment:
+  replicaCount: 2
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"    # 1 hour
+  resources:
+    requests:
+      cpu: 4000m
+      memory: 8Gi
+    limits:
+      cpu: 4000m
+      memory: 16Gi
+
+# ==============================================================================
+# Feature Extraction
+# ==============================================================================
+feature_extraction:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 4Gi
+    limits:
+      cpu: 4000m
+      memory: 5.5Gi
+
+# ==============================================================================
+# Document Conversion (convert_doc)
+# ==============================================================================
+convert_doc:
+  enabled: true
+  replicaCount: 1
+  ingress:
+    enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# ==============================================================================
+# Summarization
+# Autoscaling enabled; generous liveness grace period for long summarisation jobs.
+# ==============================================================================
+summarization:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+  resources:
+    requests:
+      cpu: 1200m
+      memory: 6.5Gi
+    limits:
+      cpu: 2000m
+      memory: 8Gi
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 15             # 5-minute grace period
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+# ==============================================================================
+# Geocoding
+# ==============================================================================
+geo:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 2Gi
+    limits:
+      cpu: 500m
+      memory: 3.5Gi
+
+# ==============================================================================
+# FinchDB (knowledge base)
+# ==============================================================================
+finchdb:
+  replicaCount: 1
+
+# ==============================================================================
+# Service Mix overrides
+# Routers and article extraction disabled for large document processing path.
+# ==============================================================================
+ner_router:
+  enabled: false
+
+tagger_router:
+  enabled: false
+
+extract_article:
+  enabled: false
+
+# ==============================================================================
+# Generic 1-hour timeouts for remaining processing services
+# ==============================================================================
+ner_de:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+ner_es:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+ner_fr:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+ner_nl:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+quotations:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+trans_ar:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+trans_de:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+trans_es:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+trans_fr:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+trans_nl:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+trans_ru:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+trans_uk:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"
+
+trans_zh:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000"

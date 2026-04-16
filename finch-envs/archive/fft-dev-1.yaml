@@ -1,0 +1,224 @@
+global:
+  image:
+    registry: "652914333254.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "dev-1"
+  tagEnvironment: "fft-dev-1"
+  tagNamespace: "" # Default to chart namespace
+
+baseDomain: "dev.finchai.com"
+additionalDomains: []
+
+anchors:
+  tagEnv: &Env fft-qa-1
+  fftVersion: &FFTVersion "214"
+
+externalDns:
+  enabled: true
+  #hostnamePrefix: "eks-"
+
+externalSecrets:
+  enabled: true
+
+secrets:
+  geocodeStreets:
+    externalSecrets:
+      remoteId: "/finch/fft/geocode/apikey"
+  databaseConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/dev-1/fftws/database_connection"
+  usageDbConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/dev/fftws-usage-db"
+  minisiteFeedbackDb:
+    externalSecrets:
+      remoteId: "/finch/fft/dev/feedback-db"
+  minisiteGoogleAnalyticsId:
+    externalSecrets:
+      remoteId: "/finch/analyst/google/analytics/key"
+  usersJson:
+    name: ""
+#    externalSecrets:
+#      remoteId: "/finch/fft/qa-1/fftws/users_json"
+
+aws:
+  enabled: true
+  acmCertArn: "arn:aws:acm:us-east-1:652914333254:certificate/ffe4021c-bc81-4f6b-802e-00c2c1463973" #dev.finchai.com
+  additionalAcmCerts: []
+  albSchemeDefault: "internal"  
+
+finchdb:
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  data:
+    initCopyEnabled: true
+    dms:
+      enabled: true
+    people:
+      image:
+        tag: 25.2.0
+    orgs:
+      image:
+        tag: 24.2.0
+    things:
+      image:
+        tag: 8.2.0
+redis:
+  enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+disambig:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+featureextraction:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+geo:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+fft:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  envEES_TIMEOUT_TAGGERS: "360000"
+  envEES_TIMEOUT_PLUGINS: "360000"
+fftws:
+  nodePort: ""
+  enabled: true
+  ingress:
+    enabled: true
+    albScheme: "internal"
+  replicaCount: 1
+  pdbMinAvail: 0
+  redisConnection: "redis-perf-1.aws.finchcomputing.com:6379"
+  metricsRedisHost: "none"
+  operationsEnvironment: "fft-dev-1"
+  extraAnnotations:
+    fluentbit.io/exclude: "true"
+  externalArticleExtraction:
+    enabled: false
+    url: "http://articleextraction-b.prod.local:9191/api/v1/extract-article"
+  externalFFT:
+    # NOTE: if you are utilizing an external FFT connection you must know how to configure the LANGS_* env vars 
+    # according to the external environments configuration / capabilities
+    enabled: false    
+  diagLogLevel: "info"
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.finchcomputing.com"
+  # This value is passed from the top level values.yaml and
+  # is configured via the package-json file
+  # packageJsonConfigMapName: ""
+minisite:
+  nodePort: ""
+  enabled: true
+  ingress:
+    enabled: true
+    albScheme: "internal"
+  replicaCount: 1
+  pdbMinAvail: 0
+headline:
+  enabled: false
+  ingress:
+    enabled: false
+articleextraction:
+  enabled: true
+  ingress:
+    enabled: false
+relationextraction_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+quotationextraction:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+relationextraction:
+  replicaCount: 1
+  pdbMinAvail: 0
+fintopic:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+coref:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+nationality:
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+translation_router:
+  enabled: true
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_zh:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_ar:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_ru:
+  enabled: false
+sentiment:
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+summarization:
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  extraSelectorLabels:
+    compute-type: fargate
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.finchcomputing.com"
+tagger_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+tagger_iptc:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_biztop:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+convertdoc:
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+langdetect:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+

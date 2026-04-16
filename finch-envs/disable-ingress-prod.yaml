@@ -1,0 +1,85 @@
+convert_doc:
+  ingress:
+    enabled: false
+
+coref:
+  ingress:
+    enabled: false
+
+disambig:
+  ingress:
+    enabled: false
+
+ees:
+  ingress:
+    enabled: false
+
+extract_article:
+  ingress:
+    enabled: false
+
+feature_extraction:
+  ingress:
+    enabled: false
+
+fft_demosite:
+  ingress:
+    enabled: true
+
+fft_ws:
+  ingress:
+    enabled: true
+    
+finchdb:
+  ingress:
+    enabled: false
+
+finchdb_writeable:
+  enabled: false
+  ingress:
+    enabled: false
+
+fin_topic_sentiment:
+  ingress:
+    enabled: false
+
+geo:
+  ingress:
+    enabled: false
+
+headline:
+  ingress:
+    enabled: false
+
+lang_detect:
+  ingress:
+    enabled: false
+
+nationality:
+  ingress:
+    enabled: false
+
+ner_router:
+  ingress:
+    enabled: false
+
+relationships_router:
+  ingress:
+    enabled: false
+
+sentiment:
+  ingress:
+    enabled: false
+
+summarization:
+  ingress:
+    enabled: false
+  
+tagger_router:
+  ingress:
+    enabled: false
+
+translation_router:
+  ingress:
+    enabled: false
+  

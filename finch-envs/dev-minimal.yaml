@@ -1,0 +1,122 @@
+global:
+  image:
+    registry: "652914333254.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "dev"
+  tagEnvironment: "fft-dev"
+  tagNamespace: ""
+
+# ==============================================================================
+# Dev Minimal — 1 replica per service, core services only
+# Services: fft_ws, disambig, feature_extraction, geo, ees, finchdb (read-only),
+#           relationships, coref, convert_doc, summarization, extract_article,
+#           lang_detect
+# ==============================================================================
+
+convert_doc:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+coref:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+disambig:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+ees:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+extract_article:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+feature_extraction:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+fft_ws:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+finchdb:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+  data:
+    initCopyEnabled: false
+    dms:
+      enabled: false
+
+geo:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+lang_detect:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+relationships:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+summarization:
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+
+# ==============================================================================
+# Disabled services
+# ==============================================================================
+
+fft_demosite:
+  enabled: false
+
+fin_topic_sentiment:
+  enabled: false
+
+ner_router:
+  enabled: false
+
+ner_en:
+  enabled: false
+
+quotations:
+  enabled: false
+
+relationships_router:
+  enabled: false
+
+tagger_biztop:
+  enabled: false
+
+translation_router:
+  enabled: false
+
+trans_zh:
+  enabled: false

@@ -1,0 +1,107 @@
+global:
+  image:
+    registry: "652914333254.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "test-4"
+  tagEnvironment: "dev"
+  tagNamespace: "" # Default to chart namespace
+
+externalDns:
+  enabled: true
+  hostnamePrefix: "fft-"
+
+externalSecrets:
+  enabled: true
+
+testing:
+  autodestroy:
+    enabled: true
+
+aws:
+  enabled: true
+  # finchcomputing.com
+  acmCertArn: "arn:aws:acm:us-east-1:652914333254:certificate/540d85a3-090f-45b7-8709-4df2968fd5a7"
+  additionalAcmCerts:
+    - "arn:aws:acm:us-east-1:652914333254:certificate/f6fefd65-05ae-48fe-a352-c9a6b9ff46d7" # finchai.com
+
+secrets:
+  usersJson:
+    name: ""
+  geocodeStreets:
+    name: ""
+  minisiteFeedbackDb:
+    name: ""
+  minisiteGoogleAnalyticsId:
+    name: ""
+  databaseConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/devint/fftws-database"
+  usageDbConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/devint/fftws-usage-db"
+
+redis:
+  replicaCount: 1
+  pdbMinAvail: 0
+finchdb:
+  replicaCount: 1
+  pdbMinAvail: 0
+disambig:
+  replicaCount: 1
+  pdbMinAvail: 0
+featureextraction:
+  replicaCount: 1
+  pdbMinAvail: 0
+geo:
+  replicaCount: 1
+  pdbMinAvail: 0
+fft:
+  replicaCount: 1
+  pdbMinAvail: 0
+fftws:
+  replicaCount: 1
+  pdbMinAvail: 0
+  loggingSidecar:
+    enabled: true
+    graylogHost: "graylog-nonprod-data.finchcomputing.com"
+minisite:
+  replicaCount: 1
+  pdbMinAvail: 0
+articleextraction:
+  replicaCount: 1
+  pdbMinAvail: 0
+relationextraction_router:
+  replicaCount: 1
+  pdbMinAvail: 0
+relationextraction:
+  replicaCount: 1
+  pdbMinAvail: 0
+fintopic:
+  replicaCount: 1
+  pdbMinAvail: 0
+coref:
+  replicaCount: 1
+  pdbMinAvail: 0
+nationality:
+  replicaCount: 1
+  pdbMinAvail: 0
+sentiment:
+  replicaCount: 1
+  pdbMinAvail: 0
+summarization:
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_router:
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_ia:
+  replicaCount: 1
+  pdbMinAvail: 0
+tika:
+  replicaCount: 1
+  pdbMinAvail: 0
+langdetect:
+  replicaCount: 1
+  pdbMinAvail: 0
+link:
+  replicaCount: 1
+  pdbMinAvail: 0

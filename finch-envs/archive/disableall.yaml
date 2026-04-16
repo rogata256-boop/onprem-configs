@@ -1,0 +1,55 @@
+finchdb:
+  enabled: false
+redis:
+  enabled: false
+disambig:
+  enabled: false
+featureextraction:
+  enabled: false
+geo:
+  enabled: false
+fft:
+  enabled: false
+fftws:
+  enabled: false
+minisite:
+  enabled: false
+headline:
+  enabled: false
+articleextraction:
+  enabled: false
+relationextraction_router:
+  enabled: false
+quotationextraction:
+  enabled: false
+relationextraction:
+  enabled: false
+fintopic:
+  enabled: false
+coref:
+  enabled: false
+nationality:
+  enabled: false
+translation_router:
+  enabled: false
+trans_zh:
+  enabled: false
+trans_ar:
+  enabled: false
+trans_ru:
+  enabled: false
+sentiment:
+  enabled: false
+summarization:
+  enabled: false
+tagger_router:
+  enabled: false
+tagger_iptc:
+  enabled: false
+tagger_biztop:
+  enabled: false
+convertdoc:
+  enabled: false
+langdetect:
+  enabled: false
+

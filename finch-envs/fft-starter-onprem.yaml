@@ -1,0 +1,65 @@
+# ==============================================================================
+# FFT Starter Configuration — On-Prem / Non-EKS
+#
+# Use this file as a starting point for plain Kubernetes deployments:
+#   - Bare-metal, kubeadm, or EC2 without AWS managed services
+#   - No ALB, no ExternalDNS, no ExternalSecrets
+#   - Air-gapped capable (requires mirroring images first)
+#
+# Fill in all REQUIRED fields below, then install:
+#   ./install-finch-suite.sh --onprem --namespace finchai \
+#     --fft-extra-values finch-envs/fft-starter-onprem.yaml
+#
+# BEFORE INSTALLING:
+#   1. Mirror images:  ./mirror-images.sh --dest-registry <your-registry>
+#   2. Create secret:  kubectl create secret generic users-json \
+#                        --namespace finchai --from-file=users.json=users.json
+#
+# For full configuration options see values.yaml and finch-envs/fft-onprem-non-eks.yaml.
+# For troubleshooting see docs/TROUBLESHOOTING.md.
+# ==============================================================================
+
+aws:
+  enabled: false
+
+# Set your ingress controller class once — applies to all services
+ingressClassNameDefault: "nginx"
+
+externalDns:
+  enabled: false
+
+externalSecrets:
+  enabled: false
+
+global:
+  image:
+    # REQUIRED: Your local/on-prem container registry
+    # Images must be mirrored from ECR first using mirror-images.sh
+    registry: ""
+
+secrets:
+  usersJson:
+    # REQUIRED: Name of the k8s secret holding your users.json license file.
+    # Create it before installing:
+    #   kubectl create secret generic users-json --namespace <ns> --from-file=users.json=users.json
+    # For OIDC deployments that do not use a users.json secret, set required: false instead.
+    name: "users-json"
+
+fft_ws:
+  enabled: true
+  # REQUIRED: Redis host:port for session/cache storage
+  # Deploy Redis in-cluster or point to an existing instance
+  redisConnection: ""
+
+# REQUIRED if using the demosite UI: browser-accessible URL of the fft_ws API
+# This must be reachable from end users' browsers (not just within the cluster)
+# fft_demosite:
+#   env:
+#     WEB_SERVICE_URL: "http://<node-ip>:30081"  # NodePort default
+
+# OPTIONAL: Enable GPU node scheduling (required for coref, ner_en, relationships, etc.)
+# 1. Taint GPU nodes:  kubectl taint nodes <node> nvidia.com/gpu=present:NoSchedule
+# 2. Enable below — tolerations are added automatically to all GPU pods when enabled.
+# podTypeResources:
+#   gpu:
+#     enabled: true

@@ -1,0 +1,9 @@
+subcharts:
+  etcd:
+    enabled: true
+
+finchdb:
+  enabled: false
+
+finchdb_writeable:
+  enabled: true

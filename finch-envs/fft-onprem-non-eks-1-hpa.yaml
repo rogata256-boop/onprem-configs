@@ -1,0 +1,640 @@
+# ==============================================================================
+# FFT On-Premises (Non-EKS / Air-Gapped) Configuration with Horizontal Pod Autoscaling (HPA)
+#
+# Based on fft-onprem-eks-1-hpa.yaml — adapted for bare-metal / non-EKS Kubernetes
+# deployments with no internet access.
+#
+# Key differences from the EKS HPA variant:
+#   - No AWS ALB / ExternalDNS / ExternalSecrets / ACM
+#   - All ingresses disabled — services are accessed via NodePort or an
+#     on-prem ingress controller configured separately
+#   - Image registry points to your local/private registry (not ECR)
+#   - Redis must be provided externally (no ElastiCache)
+#   - AWS SSM auth key lookup disabled (SSM_AUTH_KEY=none)
+#   - REDIS_CA_CERT_URL and REGION omitted (AWS-only, requires internet)
+#
+# GPU-bound services (coref, ner_en, relationships, fin_topic_sentiment,
+# tagger_biztop, tagger_iptc, ner_de, quotations, trans_ar) are intentionally
+# excluded from HPA: each pod consumes one GPU, and pod anti-affinity limits
+# one GPU pod per node. Scaling requires adding GPU nodes, not pod replicas.
+#
+# StatefulSets (finchdb, finchdb_writeable) are also excluded.
+#
+# Prerequisites:
+#   - metrics-server must be installed in the cluster for HPA to function.
+#     In an air-gapped environment, load the image from your local registry and
+#     apply the manifest using the offline copy of components.yaml.
+#     Example (online environments only):
+#       kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+#   - HPA controller is included in standard Kubernetes distributions.
+# ==============================================================================
+
+global:
+  image:
+    # REQUIRED: Set to your local/private container registry.
+    # Example: registry: "registry.customer.internal"
+    registry: ""
+  tagCluster: "onprem"
+  tagEnvironment: "fft-onprem"
+  tagNamespace: "" # Default to chart namespace
+
+baseDomain: ""
+additionalDomains: []
+
+anchors:
+  tagEnv: fft-onprem
+  fftVersion: "234"
+
+externalDns:
+  enabled: false
+
+# ExternalSecrets pulls from AWS SSM / Secrets Manager — disabled for non-EKS
+externalSecrets:
+  enabled: false
+
+secrets:
+  geocodeStreets:
+    name: ""
+  databaseConnection:
+    name: ""
+  usageDbConnection:
+    name: ""
+  fftDemositeFeedbackDb:
+    name: ""
+  fftDemositeGoogleAnalyticsId:
+    name: ""
+  usersJson:
+    name: "users-json"
+  sslCert:
+    name: ""
+  usersLicense:
+    name: ""
+  reportsOpenAiKey:
+    name: ""
+  reportsTavilyKey:
+    name: ""
+
+aws:
+  enabled: false
+
+# ==============================================================================
+# GPU Scheduling
+#
+# GPU pods (coref, ner_en, relationships, fin_topic_sentiment, tagger_biztop,
+# tagger_iptc, ner_de, quotations, trans_ar) must run exclusively on GPU nodes.
+#
+# Required node setup:
+#   1. Taint each GPU node:
+#        kubectl taint nodes <node> nvidia.com/gpu=present:NoSchedule
+#   2. Ensure the NVIDIA device plugin is installed so nvidia.com/gpu resources
+#      are advertised. In air-gapped environments, load the device plugin image
+#      from your local registry before applying the daemonset.
+#
+# How exclusivity is achieved:
+#   - Taint (NoSchedule) keeps CPU pods off GPU nodes — no toleration, no entry.
+#   - nvidia.com/gpu: 1 resource request means at most one GPU pod per GPU.
+#   - Pod anti-affinity (AffinityAvoidPodtypeRequireInstance, in values.yaml)
+#     prevents two pods of the same pod-type sharing a node.
+#
+# Set podTypeResources.gpu.enabled: false if this cluster has no GPU nodes.
+# ==============================================================================
+podTypeResources:
+  gpu:
+    enabled: true   # Activates nvidia.com/gpu: 1 request/limit for all GPU pods
+
+agentic_entity_services:
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+  env:
+    #FFTENRICH_URL: # defaults to https://ees-service.<namespace>.svc.cluster.local:443/enrich/v3
+    #KB_URL: # defaults to https://finchdb-service.<namespace>.svc.cluster.local:443/api/v1/collections/{collection}/documents/query
+    ENABLE_GEO_TAGGER: "true"
+
+convert_doc:
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+# GPU — no HPA (1:1 GPU:pod constraint)
+coref:
+  enabled: true
+  # image:
+  #   tag: "1.0.32"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+  env:
+    TS_JOB_QUEUE_SIZE: "8"
+
+disambig:
+  enabled: true
+  image:
+    tag: "1.15.0"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  # Note: each disambig pod requests 16 CPU / 31Gi — keep maxReplicas low
+  # or ensure sufficient CPU node capacity before raising this limit.
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 80
+  resources:
+    limits:
+      cpu: 16
+      memory: 31Gi
+    requests:
+      cpu: 16
+      memory: 31Gi
+  env:
+    DISAMBIG_DEBUG: "false"
+
+ees:
+  enabled: true
+  image:
+    tag: "19.10.1"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  # Note: each ees pod requests 8 CPU / 16Gi — scale cautiously.
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+  env:
+    #ETCD_TARGET: # defaults to https://etcd.<namespace>.svc.cluster.local:2379
+    EES_TIMEOUT_TAGGERS: "360000"
+    EES_TIMEOUT_PLUGINS: "360000"
+    LOCATION_FIND: "true"
+  resources:
+    limits:
+      cpu: 8
+      memory: 16Gi
+    requests:
+      cpu: 8
+      memory: 16Gi
+
+extract_article:
+  enabled: true
+  image:
+    tag: "1.0.12"
+  ingress:
+    enabled: false
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+feature_extraction:
+  enabled: true
+  image:
+    tag: "2.6.1"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+fft_demosite:
+  # NodePort for direct browser access without an ingress controller.
+  # Access the demosite at http://<node-ip>:30080
+  nodePort: "30080"
+  enabled: true
+  image:
+    tag: "4.27.0"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+  env:
+    # REQUIRED: browser-accessible URL of the FFT web service API.
+    # Must be reachable from the end-user's browser, not just within the cluster.
+    # Replace with your node IP or hostname and the fft_ws NodePort (default: 30081).
+    WEB_SERVICE_URL: "http://fft-node.customer.internal:30081"
+
+    # Disable the embedded map widget. Recommended for air-gapped environments.
+    MAP_DISABLE: "true"
+    # Disable all outbound external URL links in the UI (e.g. news source links).
+    # Recommended for environments where browser access to external sites is blocked.
+    EXTERNAL_URLS_DISABLE: "true"
+
+    # Maximum number of documents shown in the Recent Documents list.
+    MAX_RECENT_DOCS: "12"
+
+    # Mail server configuration. Set MAIL_SERVER_DISABLE to "true" if no SMTP relay is available.
+    MAIL_SERVER_DISABLE: "true"
+    #MAIL_SERVER_HOST: "smtp.customer.internal"
+    #MAIL_SERVER_PORT: "25"
+    #MAIL_SERVER_FROM_EMAIL: "no-reply@customer.internal"
+
+fft_ws:
+  # NodePort for direct API access without an ingress controller.
+  # Access the API at http://<node-ip>:30081
+  nodePort: "30081"
+  enabled: true
+  image:
+    tag: "11.13.1"
+  ingress:
+    enabled: false
+  packageJsonConfigMapName: "package-json-custom"
+  logAllDetail: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+  # REQUIRED: Set to your Redis host:port.
+  # Redis is required for session sharing across replicas when HPA scales beyond 1.
+  # Example: redisConnection: "redis.customer.internal:6379"
+  redisConnection: "none"
+  metricsRedisHost: "none"
+  operationsEnvironment: "fft-onprem"
+  loggingSidecar:
+    enabled: false
+    graylogHost: ""
+  resources:
+    limits:
+      cpu: 512m
+      memory: 2Gi
+    requests:
+      cpu: 512m
+      memory: 2Gi
+  env:
+    KB_DMS_URL: "none"
+    SERVER_IDLE_TIMEOUT_SEC: "120"
+    SERVER_READ_HEADER_TIMEOUT_SEC: "15"
+    SERVER_READ_TIMEOUT_SEC: "300"
+    SERVER_WRITE_TIMEOUT_SEC: "900"
+
+  extraEnv:
+    # SSM_AUTH_KEY: 'none' disables AWS SSM-based auth key lookup.
+    - name: SSM_AUTH_KEY
+      value: 'none'
+    - name: MAX_REQUEST_SIZE_KB
+      value: "2024"
+    - name: TRANS_LANGS
+      value: "en,ar,ru,zh"
+    # NOTE: REDIS_CA_CERT_URL and REGION are intentionally omitted.
+    # REDIS_CA_CERT_URL downloads an Amazon Root CA cert from the internet.
+    # REGION is not required outside of AWS.
+    - name: ENCRYPTED_INPUT
+      value: "true"
+
+# StatefulSet — no HPA
+finchdb:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  image:
+    repository: finchai/finchdb
+    tag: "237.4"
+  data:
+    initCopyEnabled: false
+    dms:
+      enabled: false
+
+# StatefulSet — no HPA
+finchdb_writeable:
+  enabled: true
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 1
+  image:
+    repository: finchai/finchdb-lite
+    tag: "237.4"
+  data:
+    initCopyEnabled: true
+    dms:
+      enabled: true
+  env:
+    #DMS_KV_HOST: # defaults to https://etcd.<namespace>.svc.cluster.local:2379
+    #DMS_FDB_REST_HOST: # defaults to https://finchdb-service.<namespace>.svc.cluster.local
+    DMS_FDB_REST_PORT: "443"
+    #DMS_FFT_HOST: # defaults to https://ees-service.<namespace>.svc.cluster.local
+
+
+# GPU — no HPA (1:1 GPU:pod constraint)
+fin_topic_sentiment:
+  enabled: true
+  image:
+    tag: "1.1.50"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+  env:
+    MT_REQUEST_TIMEOUT: "24"
+
+geo:
+  enabled: true
+  image:
+    tag: "5.12.21.Gaz.2.20"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+lang_detect:
+  enabled: true
+  image:
+    tag: "1.1.7"
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+nationality:
+  enabled: false
+
+ner_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: false
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+# GPU — no HPA (1:1 GPU:pod constraint)
+ner_de:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+# GPU — no HPA (1:1 GPU:pod constraint)
+ner_en:
+  enabled: true
+  image:
+    tag: "1.0.12"
+  replicaCount: 1
+  pdbMinAvail: 0
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+  env:
+    MT_REQUEST_TIMEOUT: "4000"
+
+ner_es:
+  enabled: false
+
+ner_fr:
+  enabled: false
+
+ner_nl:
+  enabled: false
+
+relationships_router:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: false
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+# GPU — no HPA (1:1 GPU:pod constraint)
+quotations:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+# GPU — no HPA (1:1 GPU:pod constraint)
+relationships:
+  enabled: true
+  image:
+    tag: "1.1.47"
+  replicaCount: 1
+  pdbMinAvail: 0
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+sentiment:
+  ingress:
+    enabled: false
+    image:
+      tag: "3.17.13"
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+summarization:
+  ingress:
+    enabled: false
+    image:
+      tag: "2.0.35"
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+  loggingSidecar:
+    graylogHost: ""
+  # extraSelectorLabels omitted — no Fargate in non-EKS environments
+
+tagger_router:
+  enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+  ingress:
+    enabled: false
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+# GPU — no HPA (1:1 GPU:pod constraint)
+tagger_biztop:
+  enabled: true
+  image:
+    tag: "1.0.9"
+  replicaCount: 1
+  pdbMinAvail: 0
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+# GPU — no HPA (1:1 GPU:pod constraint)
+tagger_iptc:
+  enabled: false
+  image:
+    tag: "1.0.12"
+  replicaCount: 1
+  pdbMinAvail: 0
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+translation_router:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+# GPU — no HPA (1:1 GPU:pod constraint)
+trans_ar:
+  enabled: false
+  image:
+    tag: "1.1.22"
+  replicaCount: 1
+  pdbMinAvail: 0
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+trans_de:
+  enabled: false
+  image:
+    tag: "1.1.22"
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_es:
+  enabled: false
+  image:
+    tag: "1.1.24"
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_fr:
+  enabled: false
+  image:
+    tag: "1.1.24"
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_nl:
+  enabled: false
+  image:
+    tag: "1.1.24"
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_ru:
+  enabled: false
+  image:
+    tag: "1.1.22"
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_uk:
+  enabled: false
+  image:
+    tag: "1.1.22"
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_zh:
+  enabled: false
+  image:
+    tag: "1.1.25"
+  replicaCount: 1
+  pdbMinAvail: 0
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80

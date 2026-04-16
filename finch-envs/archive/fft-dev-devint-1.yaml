@@ -1,0 +1,223 @@
+global:
+  image:
+    registry: "652914333254.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "devint-1"
+  tagEnvironment: "integration"
+  tagNamespace: "" # Default to chart namespace
+externalDns:
+  enabled: true
+  hostnamePrefix: "fft-"
+aws:
+  # finchcomputing.com, finchai.com, *.{dev,demo,prod,perf}.finchcomputing.com,
+  acmCertArn: "arn:aws:acm:us-east-1:652914333254:certificate/7d817d73-9ce6-4a1f-bd26-159b67566d9f"
+  enabled: true
+articleextraction:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+convertdoc:
+  enabled: true
+  ingress:
+    enabled: false
+coref:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+disambig:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+entitycorrection:
+  enabled: false
+featureextraction:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+fft:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+fftws:
+  enabled: true
+  ingress:
+    albScheme: "internal"
+    enabled: true
+    tlsEnabled: true
+  loggingSidecar:
+    enabled: true
+    graylogHost: "graylog-nonprod-data.finchcomputing.com"
+  metricsRedisHost: "redis-feeds-1-elasticache-dev.aws.finchcomputing.com"
+  packageJsonConfigMapName: "package-json-201"
+  nodePort: null
+  pdbMinAvail: 0
+  replicaCount: 1
+finchdb:
+  enabled: true
+  ingress:
+    enabled: true
+  pdbMinAvail: 0
+  replicaCount: 1
+fintopic:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+geo:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+headline:
+  enabled: false
+ipaddress:
+  enabled: false
+langdetect:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+link:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+minisite:
+  enabled: true
+  ingress:
+    albScheme: "internal"
+    enabled: true
+    tlsEnabled: true
+  nodePort: null
+  pdbMinAvail: 0
+  replicaCount: 1
+nationality:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+ner_de:
+  enabled: false
+ner_es:
+  enabled: false
+ner_fr:
+  enabled: false
+ner_nl:
+  enabled: false
+ner_router:
+  enabled: false
+quotationextraction:
+  enabled: false
+redis:
+  enabled: false
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+relationextraction:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+relationextraction_router:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+secrets:
+  # Unneeded secrets in fft deployments
+  geocodeStreets:
+    name: ""
+  minisiteFeedbackDb:
+    name: ""
+  minisiteGoogleAnalyticsId:
+    name: ""
+  usageDbConnection:
+    name: ""
+  usersJson:
+    name: ""
+sentiment:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+summarization:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+tagger_esg:
+  enabled: true
+  ingress:
+    enabled: false
+tagger_ia:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+tagger_iptc:
+  enabled: true
+  ingress:
+    enabled: false
+tagger_naics:
+  enabled: false
+tagger_router:
+  enabled: true
+  ingress:
+    enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+testing:
+  autodestroy:
+    enabled: false
+tika:
+  enabled: false
+  pdbMinAvail: 0
+  replicaCount: 1
+trans_ar:
+  enabled: false
+trans_de:
+  enabled: false
+trans_es:
+  enabled: false
+trans_fr:
+  enabled: false
+trans_nl:
+  enabled: false
+trans_ru:
+  enabled: false
+trans_uk:
+  enabled: false
+trans_zh:
+  enabled: false
+translation_router:
+  enabled: false
+informationextraction:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+  ingress:
+    enabled: true
+finchllm:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1

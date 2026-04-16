@@ -1,0 +1,275 @@
+# finch-envs/fft-large-docs-example.yaml
+
+# This override file provides the necessary settings for processing large documents (e.g., 1MB+).
+# It focuses on increased timeouts, request size limits, and resource allocations.
+
+# Web Service (fft_ws) settings for large document support
+fft_ws:
+  replicaCount: 1
+  extraEnv:
+    - name: MAX_REQUEST_SIZE_KB
+      value: "2000000" # 2GB limit for document uploads
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 10 # Allows up to 200 seconds of unresponsiveness during heavy loads
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+# Enrichment Engine Service (ees) settings
+ees:
+  replicaCount: 1
+  env:
+    EES_TIMEOUT_TAGGERS: "3600000" # 1 hour timeout
+    EES_TIMEOUT_PLUGINS: "3600000" # 1 hour timeout
+    EES_TRUNC_SIZE_PLUGINS: "-1"   # Disable truncation for large documents
+    RE_MODELS: "re"                # Ensure relationship extraction is enabled
+    NER_LANGS: "en"                # Limit to English for the test case
+  resources:
+    requests:
+      cpu: 500m
+      memory: 4Gi
+    limits:
+      cpu: 4000m
+      memory: 5.5Gi
+
+# Disambiguation Service (disambig) settings
+disambig:
+  replicaCount: 1
+  env:
+    FINCHDB_TIMEOUT: "3600000" # 1 hour timeout
+    DISAMBIG_TIMEOUT: "3600000" # 1 hour timeout
+    DISAMBIG_ENTITY_LIMIT: "10000"
+    DISAMBIG_PERSON_LIMIT: "100"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 3.5Gi
+    limits:
+      cpu: 4000m
+      memory: 5Gi
+
+# Language Detection Service
+lang_detect:
+  replicaCount: 1
+  env:
+    LANG_DETECT_TIMEOUT: "1h"
+    LANG_DETECT_QUEUE_TIMEOUT: "1h"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 1.5Gi
+    limits:
+      cpu: 500m
+      memory: 2.5Gi
+
+# Coreference Resolution
+coref:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 3.5Gi
+    limits:
+      cpu: 3000m
+      memory: 4.5Gi
+
+# Named Entity Recognition (English)
+ner_en:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80  
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 10 # Allows up to 200 seconds of unresponsiveness during heavy loads
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "16"
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 1500m
+      memory: 3Gi
+
+# Tagger Business/Topic
+tagger_biztop:
+  enabled: true
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      cpu: 500m
+      memory: 1.5Gi
+
+# Relationships
+relationships:
+  replicaCount: 5
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 1500m
+      memory: 3Gi
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 15
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+# Financial Topic Sentiment
+fin_topic_sentiment:
+  replicaCount: 3
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+  resources:
+    requests:
+      cpu: 500m
+      memory: 8Gi
+    limits:
+      cpu: 4000m
+      memory: 16Gi
+
+# Generic timeouts for other processing services (NER and Translation)
+ner_de:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+ner_es:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+ner_fr:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+ner_nl:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+quotations:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+trans_ar:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+trans_de:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+trans_es:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+trans_fr:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+trans_nl:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+trans_ru:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+trans_uk:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+trans_zh:
+  replicaCount: 1
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+
+# Service Mix: Disable routers and other services not needed for the large doc test
+ner_router:
+  enabled: false
+  replicaCount: 0
+tagger_router:
+  enabled: false
+  replicaCount: 0
+extract_article:
+  enabled: false
+
+# Convert Doc Scaling and Ingress
+convert_doc:
+  enabled: true
+  replicaCount: 1
+  ingress:
+    enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Other services scaled to 1 for the test scenario
+feature_extraction:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 4Gi
+    limits:
+      cpu: 4000m
+      memory: 5.5Gi  
+
+fft_demosite:
+  enabled: false
+  replicaCount: 0
+
+finchdb:
+  replicaCount: 1
+geo:
+  replicaCount: 1
+summarization:
+  replicaCount: 5
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80  
+  resources:
+    requests:
+      cpu: 1200m
+      memory: 6.5Gi
+    limits:
+      cpu: 2000m
+      memory: 8Gi
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 15 # Gives 5 minutes of grace period
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+

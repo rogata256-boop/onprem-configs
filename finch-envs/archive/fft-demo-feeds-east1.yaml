@@ -1,0 +1,311 @@
+global:
+  image:
+    registry: "890415378876.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "demo-4"
+  tagEnvironment: "feeds"
+  tagNamespace: "" # Default to chart namespace
+
+anchors:
+  tagEnv: &Env feeds
+  fftVersion: &FFTVersion "203"
+
+secrets:
+  usersJson:
+    name: ""
+
+externalDns:
+  enabled: true
+  hostnamePrefix: "eks-"
+
+aws:
+  enabled: true
+  acmCertArn: "arn:aws:acm:us-east-1:890415378876:certificate/209736e0-9d70-4fb1-8d8a-a4fbf3146300" # finchcomputing.com
+  additionalAcmCerts:
+    - "arn:aws:acm:us-east-1:890415378876:certificate/3f38e9f9-4e5a-4b09-92de-c229ed74f6ba" # finchai.com
+
+finchdb:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+  data:
+    initCopyEnabled: true
+    dms:
+      enabled: true
+
+redis:
+  enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+disambig:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+featureextraction:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+geo:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+fft:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+  envUSER_REGEX_FILE: "/WEB-INF/resources/patterns-demo.json"
+  envEES_TIMEOUT_TAGGERS: "360000"
+  envEES_TIMEOUT_PLUGINS: "360000"
+fftws:
+  enabled: true
+  nodePort: ""
+  ingress:
+    enabled: true
+    albScheme: "internet-facing"
+  replicaCount: 2
+  pdbMinAvail: 1
+  redisConnection: "redis-feeds-1-demo.finchcomputing.com:6379"
+  metricsRedisHost: "redis-feeds-1-demo.finchcomputing.com"
+  operationsEnvironment: "feeds-a"
+  extraAnnotations:
+    fluentbit.io/exclude: "true"
+  externalArticleExtraction:
+    enabled: true
+    url: "http://articleextraction-a.feeds.local:9191/api/v1/extract-article"
+  diagLogLevel: "info"
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.finchcomputing.com"
+  envIA_FDB_REST_URL: "http://finchdb-rest-service.feeds-resource:8080"
+  # This value is passed from the top level values.yaml and
+  # is configured via the package-json file
+  # packageJsonConfigMapName: ""
+minisite:
+  enabled: true
+  nodePort: ""
+  ingress:
+    enabled: true
+    albScheme: "internet-facing"
+  replicaCount: 2
+  pdbMinAvail: 1
+#tritagent:
+#  enabled: true
+#  ingress:
+#    enabled: true
+#  replicaCount: 2
+#  pdbMinAvail: 1
+# tritfftws:
+#   enabled: true
+#   ingress:
+#     enabled: true
+#     albScheme: "internet-facing"
+#   replicaCount: 2
+#   pdbMinAvail: 1
+#   redisConnection: "redis-feeds-1-demo.finchcomputing.com:6379"
+#   metricsRedisHost: "redis-feeds-1-demo.finchcomputing.com"
+#   operationsEnvironment: "feeds-a"
+#   extraAnnotations:
+#     fluentbit.io/exclude: "true"
+#   externalArticleExtraction:
+#     enabled: true
+#     url: "http://articleextraction-a.feeds.local:9191/api/v1/extract-article"
+#   diagLogLevel: "info"
+#   loggingSidecar:
+#     graylogHost: "graylog-nonprod-data.finchcomputing.com"
+#   envIA_FDB_REST_URL: "http://finchdb-rest-service.feeds-resource:8080"
+#   # This value is passed from the top level values.yaml and
+#   # is configured via the package-json file
+#   # packageJsonConfigMapName: ""
+# tritsite:
+#   enabled: true
+#   ingress:
+#     enabled: true
+#     albScheme: "internet-facing"
+#   replicaCount: 2
+#   pdbMinAvail: 1
+headline:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+articleextraction:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+ner_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+ner_nl:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+  #extraSelectorLabels:
+  #  compute-type: fargate
+ner_fr:
+  enabled: false
+ner_es:
+  enabled: false
+ner_de:
+  enabled: false
+entitycorrection:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+relationextraction_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+quotationextraction:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+relationextraction:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+fintopic:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+coref:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+nationality:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+translation_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+trans_zh:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+trans_de:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+trans_ar:
+  enabled: false
+trans_uk:
+  enabled: false
+trans_ru:
+  enabled: false
+trans_fr:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+trans_es:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+trans_nl:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+sentiment:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 12
+  pdbMinAvail: 10
+summarization:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 12
+  pdbMinAvail: 10
+  #extraSelectorLabels:
+  #  compute-type: fargate
+tagger_ia:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+  envFINCHDB_URL: finchdb-rest-service.feeds-resource:8080
+tagger_router:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: true
+tagger_esg:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+  extraSelectorLabels:
+    compute-type: fargate
+tagger_naics:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+  envFINCHDB_URL: finchdb-rest-service.feeds-resource:8080
+tagger_iptc:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+tika:
+  enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+convertdoc:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+ipaddress:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+langdetect:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+link:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+informationextraction:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1
+  ingress:
+    enabled: true
+finchllm:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 1

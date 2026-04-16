@@ -1,0 +1,257 @@
+global:
+  image:
+    registry: "652914333254.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "dev-1"
+  tagEnvironment: "kb-build-dev-1"
+  tagNamespace: "" # Default to chart namespace
+
+baseDomain: "dev.finchai.com"
+additionalDomains: []
+
+anchors:
+  tagEnv: &Env fft-dev-1
+  fftVersion: &FFTVersion "218"
+
+externalDns:
+  enabled: true
+  #hostnamePrefix: ""
+
+externalSecrets:
+  enabled: true
+
+secrets:
+  geocodeStreets:
+    externalSecrets:
+      remoteId: "/finch/fft/geocode/apikey"
+  databaseConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/dev-1/fftws/database_connection"
+  usageDbConnection:
+    externalSecrets:
+      remoteId: "/finch/fft/dev/fftws-usage-db"
+  fftDemositeFeedbackDb:
+    externalSecrets:
+      remoteId: "/finch/fft/dev/feedback-db"
+  fftDemositeGoogleAnalyticsId:
+    externalSecrets:
+      remoteId: "/finch/analyst/google/analytics/key"
+  usersJson:
+    name: ""
+  sslCert:
+    name: ""
+  usersLicense:
+    name: ""
+
+aws:
+  enabled: true
+  acmCertArn: "arn:aws:acm:us-east-1:652914333254:certificate/ffe4021c-bc81-4f6b-802e-00c2c1463973" #dev.finchai.com
+  additionalAcmCerts: []
+  albSchemeDefault: "internal"  
+
+convert_doc:
+  enabled: false
+  ingress:
+    enabled: false
+
+coref:
+  enabled: false
+  ingress:
+    enabled: false
+
+disambig:
+  enabled: true
+  ingress:
+    enabled: true
+  image:
+    tag: "1.9.2.3"
+  replicaCount: 2
+  pdbMinAvail: 0
+
+ees:
+  enabled: true
+  ingress:
+    enabled: true
+  image:
+    tag: "18.1.1.11"
+  replicaCount: 2
+  pdbMinAvail: 0
+  envEES_TIMEOUT_TAGGERS: "360000"
+  envEES_TIMEOUT_PLUGINS: "360000"
+
+extract_article:
+  enabled: false
+  ingress:
+    enabled: false
+
+feature_extraction:
+  enabled: true
+  ingress:
+    enabled: true
+  image:
+    tag: "2.5.0"
+  replicaCount: 2
+  pdbMinAvail: 0
+
+fft_demosite:
+  enabled: false
+  ingress:
+    enabled: false
+
+fft_ws:
+  nodePort: ""
+  enabled: true
+  ingress:
+    enabled: true
+    albScheme: "internal"
+  replicaCount: 0
+  pdbMinAvail: 0
+  redisConnection: "redis-perf-1.aws.finchcomputing.com:6379"
+  metricsRedisHost: "none"
+  operationsEnvironment: "kb-build-dev-1"
+  extraAnnotations:
+    fluentbit.io/exclude: "true" 
+  diagLogLevel: "info"
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.inf.finchai.com"
+  # This value is passed from the top level values.yaml and
+  # is configured via the package-json file
+  # packageJsonConfigMapName: ""
+
+finchdb:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 0
+  pdbMinAvail: 0
+  image:
+    repository: finchai/finchdb
+    tag: "218.0"  
+  data:
+    initCopyEnabled: false
+    dms:
+      enabled: false
+
+fin_topic_sentiment:
+  enabled: false
+  ingress:
+    enabled: false
+
+geo:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+
+headline:
+  enabled: false
+  ingress:
+    enabled: false
+
+lang_detect:
+  enabled: false
+  ingress:
+    enabled: false
+
+nationality:
+  enabled: false
+  ingress:
+    enabled: false
+
+ner_router:
+  enabled: true
+  ingress:
+    enabled: false
+
+ner_de:
+  enabled: false
+
+ner_en:
+  enabled: true
+  replicaCount: 2
+  pdbMinAvail: 0
+  image:
+    tag: "0.1.5"
+
+ner_es:
+  enabled: false
+
+ner_fr:
+  enabled: false
+
+ner_nl:
+  enabled: false
+
+relationships_router:
+  enabled: false
+  ingress:
+    enabled: false
+
+quotations:
+  enabled: false
+
+relationships:
+  enabled: false
+
+sentiment:
+  enabled: false
+  ingress:
+    enabled: false
+
+summarization:
+  enabled: false
+  ingress:
+    enabled: false
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.inf.finchai.com"
+  extraSelectorLabels:
+    compute-type: fargate
+
+tagger_router:
+  enabled: false
+  ingress:
+    enabled: false
+
+tagger_biztop:
+  enabled: false
+
+tagger_esg:
+  enabled: false
+
+tagger_ia:
+  enabled: false
+
+tagger_iptc:
+  enabled: false
+
+tagger_naics:
+  enabled: false
+
+translation_router:
+  enabled: false
+  ingress:
+    enabled: false
+
+trans_ar:
+  enabled: false
+
+trans_de:
+  enabled: false
+
+trans_es:
+  enabled: false
+
+trans_fr:
+  enabled: false
+
+trans_nl:
+  enabled: false
+
+trans_ru:
+  enabled: false
+
+trans_uk:
+  enabled: false
+
+trans_zh:
+  enabled: false

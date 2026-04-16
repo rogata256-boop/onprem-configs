@@ -1,0 +1,212 @@
+anchors:
+  affinity:
+    # Requires amd64 gpu, requires the node not be flagged by karpenter as a GPU or Accelerator node, avoid differing tenant
+    standardTenant: &AffinityKarpenterAvoidGpuAndAcceleratorTenant |
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: finch-tenant
+              operator: Exists
+            - key: finch-tenant
+              operator: NotIn
+              values:
+              - {{ .Release.Namespace }}
+          namespaceSelector:
+            # Forces the selector to look across all namespaces for antiaffinity
+            matchExpressions:
+            - key: "kubernetes.io/metadata.name"
+              operator: "Exists"
+          topologyKey: "kubernetes.io/hostname"
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/arch
+                  operator: In
+                  values:
+                    - amd64
+                - key: karpenter.k8s.aws/instance-accelerator-count
+                  operator: DoesNotExist
+                - key: karpenter.k8s.aws/instance-gpu-count
+                  operator: DoesNotExist
+    # require standard and not fargate, avoid differing tenant
+    standardNotFargateTenant: &AffinityKarpenterAvoidGpuAndAccelAndFargateTenant |
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: finch-tenant
+              operator: Exists
+            - key: finch-tenant
+              operator: NotIn
+              values:
+              - {{ .Release.Namespace }}
+          topologyKey: "kubernetes.io/hostname"
+          namespaceSelector:
+            # Forces the selector to look across all namespaces for antiaffinity
+            matchExpressions:
+            - key: "kubernetes.io/metadata.name"
+              operator: "Exists"
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/arch
+                  operator: In
+                  values:
+                    - amd64
+                - key: karpenter.k8s.aws/instance-accelerator-count
+                  operator: DoesNotExist
+                - key: karpenter.k8s.aws/instance-gpu-count
+                  operator: DoesNotExist
+                - key: eks.amazonaws.com/compute-type
+                  operator: NotIn
+                  values:
+                  - fargate
+                - key: eks-managed
+                  operator: NotIn
+                  values:
+                  - "true"
+    # Require a specific instance type, configured with .Values.<svc>.instanceType
+    # Require to not be scheduled on nodes with pods of the same type, configured with .Values.svc.podType
+    # Require to not be scheduled on nodes with pods of the same tenancy
+    avoidPodtypeRequireInstanceTenant: &AffinityAvoidPodtypeRequireInstanceTenant |
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: finch-tenant
+              operator: Exists
+            - key: finch-tenant
+              operator: NotIn
+              values:
+              - {{ .Release.Namespace }}
+          namespaceSelector:
+            # Forces the selector to look across all namespaces for antiaffinity
+            matchExpressions:
+            - key: "kubernetes.io/metadata.name"
+              operator: "Exists"
+          topologyKey: "kubernetes.io/hostname"
+        - labelSelector:
+            matchExpressions:
+            - key: pod-type
+              operator: In
+              values:
+              - {{ .podType }}
+          topologyKey: "kubernetes.io/hostname"
+          namespaceSelector:
+            # Forces the selector to look across all namespaces for antiaffinity
+            matchExpressions:
+            - key: "kubernetes.io/metadata.name"
+              operator: "Exists"
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+          - matchExpressions:
+            - key: kubernetes.io/arch
+              operator: In
+              values:
+              - amd64
+            {{- with .instanceType }}
+            - key: node.kubernetes.io/instance-type
+              operator: In
+              values:
+              - {{ . }}
+            {{- end }}
+            {{- with .instanceFamily }}
+            - key: node.kubernetes.io/instance-family
+              operator: In
+              values:
+              - {{ . }}
+            {{- end }}
+redis:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+finchdb:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+disambig:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+featureextraction:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+geo:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+fft:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+fftws:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+minisite:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+headline:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+articleextraction:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+ner_router:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+ner_nl:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+ner_fr:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+ner_es:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+ner_de:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+entitycorrection:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+relationextraction_router:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+quotationextraction:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+relationextraction:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+fintopic:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+coref:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+nationality:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+translation_router:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+trans_zh:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+trans_de:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+trans_ar:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+trans_uk:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+trans_fr:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+trans_nl:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+trans_ru:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+trans_es:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+sentiment:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+summarization:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+tagger_ia:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+tagger_router:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+tagger_esg:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+tagger_naics:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+tagger_iptc:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+tika:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+convertdoc:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+ipaddress:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+langdetect:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+link:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant
+finchllm:
+  affinity: *AffinityAvoidPodtypeRequireInstanceTenant
+informationextraction:
+  affinity: *AffinityKarpenterAvoidGpuAndAcceleratorTenant

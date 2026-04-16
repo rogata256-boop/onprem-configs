@@ -1,0 +1,271 @@
+global:
+  image:
+    registry: "652914333254.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "test-4"
+  tagEnvironment: "inf"
+  tagNamespace: "" # Default to chart namespace
+
+anchors:
+  tagEnv: &Env inf
+  fftVersion: &FFTVersion "207"
+
+externalDns:
+  enabled: true
+  hostnamePrefix: "eks-"
+
+secrets:
+  usersJson:
+    name: ""
+
+aws:
+  enabled: true
+  # finchcomputing.com
+  acmCertArn: "arn:aws:acm:us-east-1:652914333254:certificate/540d85a3-090f-45b7-8709-4df2968fd5a7"
+  additionalAcmCerts:
+    - "arn:aws:acm:us-east-1:652914333254:certificate/f6fefd65-05ae-48fe-a352-c9a6b9ff46d7" # finchai.com
+
+finchdb:
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  image:
+    repository: finchai/finchdb
+    tag: "209.0"
+  # App Environment Vars
+  # -- "TRUE" or "FALSE" - controls whether the startup scripts run or not. Used for debugging
+  envSTART: "TRUE"
+  # -- FQDN of the redis host. Only used if DMS is "TRUE"
+  # @default -- The Redis Service Hostname
+  envDMS_REDIS_HOST: ""
+  # -- fft service host for DMS use. Only used if DMS is "TRUE"
+  # @default -- The FFT Service Hostname
+  envDMS_FFT_HOST: ""
+  # -- PORT of the FFT host/ALB. Only used if DMS is "TRUE"
+  # @default -- The FFT Service Port
+  envDMS_FFT_PORT: ""
+  # -- "READ", "WRITE"
+  envMODE: "READ"
+  # --- "TRUE" or "FALSE"
+  envMIGRATE: "FALSE"
+  # --- "TRUE" or "FALSE"
+  envFILTER_ENTITIES: "FALSE"
+
+  data:
+    initCopyEnabled: false
+    dms:
+      enabled: false
+    people:
+      enabled: true
+      mode: "READ"
+    orgs:
+      enabled: true
+      mode: "READ"
+    things:
+      enabled: true
+      mode: "READ"            
+
+redis:
+  enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+disambig:
+  enabled: true
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+featureextraction:
+  enabled: true
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+geo:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 3
+  pdbMinAvail: 0
+fft:
+  enabled: true
+  ingress:
+    enabled: true
+  replicaCount: 1
+  pdbMinAvail: 0
+  envEES_TIMEOUT_TAGGERS: "360000"
+  envEES_TIMEOUT_PLUGINS: "360000"
+fftws:
+  nodePort: ""
+  enabled: false
+  ingress:
+    enabled: false
+    albScheme: "internet-facing"
+  replicaCount: 4
+  pdbMinAvail: 0
+  redisConnection: "redis-prod-1.prod.local:6379"
+  metricsRedisHost: "redis-prod-1.prod.local"
+  operationsEnvironment: "prod-a"
+  extraAnnotations:
+    fluentbit.io/exclude: "false"
+  externalArticleExtraction:
+    enabled: false
+    url: "http://articleextraction-a.prod.local:9191/api/v1/extract-article"
+  externalFFT:
+    # NOTE: if you are utilizing an external FFT connection you must know how to configure the LANGS_* env vars 
+    # according to the external environments configuration / capabilities
+    enabled: false    
+  diagLogLevel: "info"
+  loggingSidecar:
+    graylogHost: "graylog-nonprod-data.finchcomputing.com"
+  # This value is passed from the top level values.yaml and
+  # is configured via the package-json file
+  # packageJsonConfigMapName: ""
+minisite:
+  nodePort: ""
+  enabled: false
+  ingress:
+    enabled: false
+    albScheme: "internet-facing"
+  replicaCount: 2
+  pdbMinAvail: 0
+headline:
+  enabled: false
+  ingress:
+    enabled: false
+articleextraction:
+  enabled: false
+  ingress:
+    enabled: false
+ner_router:
+  enabled: false
+  ingress:
+    enabled: false
+ner_nl:
+  enabled: false
+ner_fr:
+  enabled: false
+ner_es:
+  enabled: false
+ner_de:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+entitycorrection:
+  enabled: false
+relationextraction_router:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: false
+quotationextraction:
+  enabled: false
+  replicaCount: 2
+  pdbMinAvail: 0
+relationextraction:
+  enabled: false
+  replicaCount: 3
+  pdbMinAvail: 0
+fintopic:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 3
+  pdbMinAvail: 0
+coref:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 4
+  pdbMinAvail: 0
+nationality:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 2
+  pdbMinAvail: 0
+translation_router:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_zh:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_de:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_ar:
+  enabled: false
+trans_uk:
+  enabled: false
+trans_ru:
+  enabled: false
+trans_fr:
+  enabled: false
+trans_es:
+  enabled: false
+trans_nl:
+  enabled: false
+sentiment:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 4
+  pdbMinAvail: 0
+summarization:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 8
+  pdbMinAvail: 0
+  extraSelectorLabels:
+    compute-type: fargate
+tagger_ia:
+  enabled: false
+tagger_router:
+  enabled: false
+  replicaCount: 1
+  pdbMinAvail: 0
+  ingress:
+    enabled: false
+tagger_esg:
+  enabled: false
+tagger_naics:
+  enabled: false
+tagger_iptc:
+  enabled: false
+  replicaCount: 2
+  pdbMinAvail: 0
+tika:
+  enabled: false
+convertdoc:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 2
+  pdbMinAvail: 0
+ipaddress:
+  enabled: false
+langdetect:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 6
+  pdbMinAvail: 0
+link:
+  enabled: false
+informationextraction:
+  enabled: false
+  ingress:
+    enabled: false
+  replicaCount: 2
+  pdbMinAvail: 0
+finchllm:
+  enabled: false
+  replicaCount: 2
+  pdbMinAvail: 0

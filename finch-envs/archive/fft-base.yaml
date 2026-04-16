@@ -1,0 +1,144 @@
+secrets:
+  # Unneeded secrets in fft deployments
+  geocodeStreets:
+    name: ""
+  usageDbConnection:
+    name: ""
+  minisiteFeedbackDb:
+    name: ""
+  minisiteGoogleAnalyticsId:
+    name: ""
+redis:
+  enabled: true
+  ingress:
+    enabled: false
+finchdb:
+  enabled: true
+  ingress:
+    enabled: false
+disambig:
+  enabled: true
+  ingress:
+    enabled: false
+featureextraction:
+  enabled: true
+  ingress:
+    enabled: false
+geo:
+  enabled: true
+  ingress:
+    enabled: false
+fft:
+  enabled: true
+  ingress:
+    enabled: false
+fftws:
+  enabled: true
+  ingress:
+    enabled: false
+  loggingSidecar:
+    enabled: false
+minisite:
+  enabled: true
+  ingress:
+    enabled: false
+headline:
+  enabled: false
+articleextraction:
+  enabled: true
+  ingress:
+    enabled: false
+entitycorrection:
+  enabled: false
+relationextraction_router:
+  enabled: true
+  ingress:
+    enabled: false
+quotationextraction:
+  enabled: false
+relationextraction:
+  enabled: true
+  ingress:
+    enabled: false
+fintopic:
+  enabled: true
+  ingress:
+    enabled: false
+coref:
+  enabled: true
+  ingress:
+    enabled: false
+nationality:
+  enabled: true
+  ingress:
+    enabled: false
+sentiment:
+  enabled: true
+  ingress:
+    enabled: false
+summarization:
+  enabled: true
+  ingress:
+    enabled: false
+tagger_router:
+  enabled: true
+  ingress:
+    enabled: false
+tagger_esg:
+  enabled: true
+  ingress:
+    enabled: false
+tagger_naics:
+  enabled: false
+tagger_ia:
+  enabled: true
+  ingress:
+    enabled: false
+tagger_iptc:
+  enabled: true
+  ingress:
+    enabled: false
+tika:
+  enabled: false
+convertdoc:
+  enabled: true
+  ingress:
+    enabled: false
+ipaddress:
+  enabled: false
+langdetect:
+  enabled: true
+  ingress:
+    enabled: false
+link:
+  enabled: true
+  ingress:
+    enabled: false
+translation_router:
+  enabled: false
+trans_nl:
+  enabled: false
+trans_ar:
+  enabled: false
+trans_de:
+  enabled: false
+trans_es:
+  enabled: false
+trans_fr:
+  enabled: false
+trans_ru:
+  enabled: false
+trans_uk:
+  enabled: false
+trans_zh:
+  enabled: false
+ner_router:
+  enabled: false
+ner_de:
+  enabled: false
+ner_es:
+  enabled: false
+ner_fr:
+  enabled: false
+ner_nl:
+  enabled: false

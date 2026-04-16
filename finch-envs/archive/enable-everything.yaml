@@ -1,0 +1,90 @@
+redis:
+  enabled: true
+finchdb:
+  enabled: true
+disambig:
+  enabled: true
+featureextraction:
+  enabled: true
+geo:
+  enabled: true
+fft:
+  enabled: true
+fftws:
+  enabled: true
+minisite:
+  enabled: true
+headline:
+  enabled: true
+articleextraction:
+  enabled: true
+ner_router:
+  enabled: true
+ner_nl:
+  enabled: true
+ner_fr:
+  enabled: true
+ner_es:
+  enabled: true
+ner_de:
+  enabled: true
+entitycorrection:
+  enabled: true
+relationextraction_router:
+  enabled: true
+quotationextraction:
+  enabled: true
+relationextraction:
+  enabled: true
+fintopic:
+  enabled: true
+coref:
+  enabled: true
+nationality:
+  enabled: true
+translation_router:
+  enabled: true
+trans_zh:
+  enabled: true
+trans_de:
+  enabled: true
+trans_ar:
+  enabled: true
+trans_uk:
+  enabled: true
+trans_fr:
+  enabled: true
+trans_nl:
+  enabled: true
+trans_ru:
+  enabled: true
+trans_es:
+  enabled: true
+sentiment:
+  enabled: true
+summarization:
+  enabled: true
+tagger_ia:
+  enabled: true
+tagger_router:
+  enabled: true
+tagger_esg:
+  enabled: true
+tagger_naics:
+  enabled: true
+tagger_iptc:
+  enabled: true
+tika:
+  enabled: true
+convertdoc:
+  enabled: true
+ipaddress:
+  enabled: true
+langdetect:
+  enabled: true
+link:
+  enabled: true
+finchllm:
+  enabled: true
+informationextraction:
+  enabled: true

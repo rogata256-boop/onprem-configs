@@ -1,0 +1,163 @@
+global:
+  image:
+    registry: "localhost:5000"
+  tagCluster: "onprem"
+  tagEnvironment: "dev"
+  tagNamespace: "" # Default to chart namespace
+
+externalDns:
+  enabled: false
+
+secrets:
+  databaseConnection:
+    name: ""
+  geocodeStreets:
+    name: ""
+  usageDbConnection:
+    name: ""
+  minisiteFeedbackDb:
+    name: ""
+  minisiteGoogleAnalyticsId:
+    name: ""
+  usersJson:
+    name: "users-json"
+
+aws:
+  enabled: false
+
+redis:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+  #dataVolumeStorageClass: "local-path"
+  dataVolumeStorageClass: ""
+finchdb:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+  data:
+    initCopyEnabled: true
+    dms:
+      enabled: true
+disambig:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+featureextraction:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+geo:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+fft:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+  image:
+    repository: finchai/ees
+    tag: "17.3.0"
+  envUSER_REGEX_FILE: "/opt/customregex/patterns-demo.json"
+fftws:
+  replicaCount: 1
+  pdbMinAvail: 0
+  enableLogging: true
+  loggingSidecar:
+    enabled: false
+  affinity: null
+  resources: null
+minisite:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+  envSENTIMENT_MODEL: "news3"
+  envMAIL_SERVER_DISABLE: "true"
+  envWEB_SERVICE_URL: "https://nointernet-dev-5r.aws.finchcomputing.com"
+articleextraction:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+relationextraction_router:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+relationextraction:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+fintopic:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+coref:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+nationality:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+sentiment:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+summarization:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+tagger_router:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+tagger_ia:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+tagger_esg:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+tagger_iptc:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+tagger_naics:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+tika:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+langdetect:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null
+link:
+  replicaCount: 1
+  pdbMinAvail: 0
+  affinity: null
+  resources: null

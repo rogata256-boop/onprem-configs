@@ -1,0 +1,187 @@
+# ==============================================================================
+# HPA Overlay — Horizontal Pod Autoscaling
+#
+# Layer this on top of any FFT env values file to enable CPU-based HPA for all
+# stateless Deployment services. Works on both EKS and on-prem clusters.
+#
+# Prerequisites:
+#   - metrics-server must be installed:
+#       kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+#   - Kubernetes metrics-server must be running (standard in EKS, manual for on-prem)
+#
+# Usage:
+#   ./install-finch-suite.sh --hpa [other options]
+#   # or explicitly:
+#   ./install-finch-suite.sh --fft-extra-values finch-envs/fft-hpa-overlay.yaml [other options]
+#
+# GPU-bound services (coref, ner_en, relationships, fin_topic_sentiment,
+# tagger_biztop, tagger_iptc, ner_de, quotations, trans_ar) are intentionally
+# excluded — each pod consumes one GPU and cannot scale beyond the GPU node count.
+#
+# StatefulSets (finchdb, finchdb_writeable) are also excluded.
+#
+# Tune minReplicas/maxReplicas per service to match your cluster capacity.
+# ==============================================================================
+
+agentic_entity_services:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+convert_doc:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+disambig:
+  # Note: each pod requests 16 CPU / 31Gi — keep maxReplicas conservative.
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 80
+
+ees:
+  # Note: each pod requests 8 CPU / 16Gi — scale cautiously.
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+extract_article:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+feature_extraction:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+fft_demosite:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+fft_ws:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+geo:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+lang_detect:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+ner_router:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+relationships_router:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+sentiment:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+summarization:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+tagger_router:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+translation_router:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_de:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_es:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_fr:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_nl:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_ru:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_uk:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+trans_zh:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80

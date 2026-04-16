@@ -1,0 +1,2990 @@
+#@ignored
+anchors:
+  # Also update .fft_ws.packageJsonConfigMapName; anchors don't support interpolation
+  fftVersion: &FFTVersion "233"
+  topologySpreadConstraints:
+    # Prefer to be scheduled in an availability zone different from other pods in the same deployment, but not a hard requirement
+    preferDifferentZone: &TSCPreferDifferentZone |
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: {{ .appName }}
+            component: {{ .componentName }}
+  affinity:
+    # Requires amd64 gpu, requires the node not be flagged by karpenter as a GPU or Accelerator node
+    standard: &AffinityKarpenterAvoidGpuAndAccelerator |
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/arch
+                  operator: In
+                  values:
+                    - amd64
+                - key: karpenter.k8s.aws/instance-accelerator-count
+                  operator: DoesNotExist
+                - key: karpenter.k8s.aws/instance-gpu-count
+                  operator: DoesNotExist
+    # require standard and not fargate
+    standardNotFargate: &AffinityKarpenterAvoidGpuAndAccelAndFargate |
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/arch
+                  operator: In
+                  values:
+                    - amd64
+                - key: karpenter.k8s.aws/instance-accelerator-count
+                  operator: DoesNotExist
+                - key: karpenter.k8s.aws/instance-gpu-count
+                  operator: DoesNotExist
+                - key: eks.amazonaws.com/compute-type
+                  operator: NotIn
+                  values:
+                  - fargate
+                - key: eks-managed
+                  operator: NotIn
+                  values:
+                  - "true"
+    # Require a specific instance type, configured with .Values.<svc>.instanceType
+    # Require to not be scheduled on nodes with pods of the same type, configured with .Values.svc.podType
+    avoidPodtypeRequireInstance: &AffinityAvoidPodtypeRequireInstance |
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: pod-type
+              operator: In
+              values:
+              - {{ .podType }}
+          topologyKey: "kubernetes.io/hostname"
+          namespaceSelector:
+            # Forces the selector to look across all namespaces for antiaffinity
+            matchExpressions:
+            - key: "kubernetes.io/metadata.name"
+              operator: "Exists"
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+          - matchExpressions:
+            - key: kubernetes.io/arch
+              operator: In
+              values:
+              - amd64
+            {{- with .instanceType }}
+            - key: node.kubernetes.io/instance-type
+              operator: In
+              values:
+              - {{ . }}
+            {{- end }}
+            {{- with .instanceFamily }}
+            - key: node.kubernetes.io/instance-family
+              operator: In
+              values:
+              - {{ . }}
+            {{- end }}
+
+# -- Global configuration for all services
+global:
+  # -- Any image pull secrets used with deployments.  Applies to all services, overridable at the service level
+  imagePullSecrets: []
+  #imagePullSecrets:
+  #- foo
+
+  image:
+    ## Image Components example:
+    ## registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.10.1
+    #  ^^^^^^^^^^^^^^^ - Registry
+    #                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ - Repository
+    #                                                        ^^^^^^^ - Tag
+    # -- A global image registry to use for all services.  Will prefix _every_ image used in this helm chart.  Not overridable at the service level.  Can include path prefixes if using a namespaced mirror/cache for all images.
+    registry: ""
+
+  # -- nodeSelector config that will be included with every service.  Overridable at the service level
+  nodeSelector:
+    kubernetes.io/os: linux
+  #nodeSelector: {}
+
+  # -- Default tag environment for all services; used for log prefixes
+  # @default -- The deployment Namespace
+  tagEnvironment: ""
+
+  # -- Default tag namespace for all services; used for graylog
+  # @default -- The deployment Namespace
+  tagNamespace: ""
+
+  # -- Default tag cluster for all services; used for graylog
+  # @default -- empty
+  tagCluster: ""
+
+  # -- Additional labels applied to pod specs for all services
+  extraPodLabels: {}
+
+  # -- Default affinity applied to Deployments when otherwise unconfigured
+  # @default -- Avoid GPU and Accelerator nodes as flagged by Karpenter
+  affinity: *AffinityKarpenterAvoidGpuAndAccelerator
+
+  # -- Default topologySpreadConstraints applied to Deployments when otherwise unconfigured
+  # @default -- none
+  topologySpreadConstraints: {}
+  #topologySpreadConstraints: *TSCPreferDifferentZone
+
+# -- An optional overlay of resource limits/requests for services with podType matching the key
+# @default -- no additional resources included
+podTypeResources:
+  gpu:
+    # -- Toggle the inclusion of GPU resource requests/limits and tolerations when podType == "gpu"
+    enabled: false
+    # -- Tolerations automatically added to all pods with podType == "gpu" when enabled.
+    # Matches the standard nvidia.com/gpu taint applied to GPU nodes.
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+    # -- The default GPU resource limits for all services of podType "gpu"
+    # @default -- Require "nvidia.com/gpu: 1"; only works if nvidia-operator/nvidia-device-plugin is installed
+    resources:
+      limits:
+        nvidia.com/gpu: "1"
+      requests:
+        nvidia.com/gpu: "1"
+  inf:
+    # -- Toggle the inclusion of Neuron resource requests/limits and tolerations when podType == "inf"
+    enabled: false
+    # -- Tolerations automatically added to all pods with podType == "inf" when enabled.
+    # Matches the standard aws.amazon.com/neuron taint applied to Inferentia nodes.
+    tolerations:
+      - key: aws.amazon.com/neuron
+        operator: Exists
+        effect: NoSchedule
+    # -- The default Neuron resource limits for all services of podType "inf"
+    # @default -- Require "aws.amazon.com/neurondevice: 1"; only works if neuron-device-plugin is installed
+    resources:
+      limits:
+        ## Deprecated
+        aws.amazon.com/neuron: "1"
+        ## Pending https://github.com/aws/karpenter-provider-aws/issues/3555
+        #aws.amazon.com/neurondevice: "1"
+      requests:
+        ## Deprecated
+        aws.amazon.com/neuron: "1"
+        ## Pending https://github.com/aws/karpenter-provider-aws/issues/3555
+        #aws.amazon.com/neurondevice: "1"
+
+# -- Additional helm charts for configuration of optional functionality and features within fft 
+subcharts:
+  # -- a distributed key-value store, required when writable finchdb is enabled, or when ees custom entities are supported
+  etcd:
+    enabled: false
+  # -- an optional ingress controller used to support load balancers in non-aws / onprem deployments
+  nginx:
+    enabled: false
+
+# -- Collections of optional pre / post deployment jobs used to support fft
+jobs:
+  # -- TODO: Jordan to write description for this
+  kubectl:
+    enabled: true
+    image:
+      repository: bitnami/kubectl
+      tag: "latest"
+  # -- optionally mount the latest custom geo gaz for extraction of geo entities of interest    
+  geo_job:
+    enabled: false
+
+# -- The base domain for the deployment, ie: finchcomputing.com
+baseDomain: "finchcomputing.com"
+
+# -- List of additional domains for the deployment used for public resources.  ie: ["finchai.com"]. Only applies to demosite, fft_ws
+additionalDomains: ["finchai.com"]
+
+# -- Default Kubernetes ingressClassName for all services. Override per-service via ingress.className.
+# For on-prem/nginx deployments set this to "nginx" once instead of per-service.
+# aws.enabled=false deployments should set this to match their ingress controller.
+ingressClassNameDefault: "alb"
+
+# -- Configuration to add External DNS annotations to Ingress
+# @default -- enabled
+externalDns:
+  # -- Toggle the presumption of External DNS
+  enabled: true
+
+  # -- A prefix added to every hostname used by External DNS; "NAMESPACE" will be replaced with the namespace
+  hostnamePrefix: ""
+  # -- A suffix added to every hostname used by External DNS; "NAMESPACE" will be replaced with the namespace
+  hostnameSuffix: "-NAMESPACE"
+  # -- TTL (in seconds) for DNS records created by External DNS. Leave empty to use the ExternalDNS controller default.
+  ttl: ""
+
+# -- All the configuration for external-secrets
+# @default -- disabled
+externalSecrets:
+  enabled: false
+  # -- The default secretStoreRef for external-secrets
+  secretStoreRef:
+    name: aws-parameter-store
+    kind: ClusterSecretStore
+
+# -- All the configuration for AWS-specific deployments
+# @default -- disabled
+aws:
+  # -- Enable the aws configurations for the chart
+  enabled: false
+  # -- The AWS ARN for the Amazon Certificate Manager (ACM) Cert
+  acmCertArn: ""
+  # -- Any additional ACM Certs that you want included on public resources. Only applies to demosite, fft_ws
+  additionalAcmCerts: []
+  # -- Default ALB scheme when unset by application (internal or internet-facing)
+  albSchemeDefault: "internal"
+
+  # -- Create storage classes for EBS volumes
+  createStorageClasses: true
+
+  # -- Conditionally attach the ingress annotations for AWS Load Balancer configuration.  See [the docs](https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.2/guide/ingress/annotations/)
+  #loadBalancerEnabled: false
+
+# -- All the configuration for onprem specific deployments
+onprem:
+  # -- Enable the onprem configurations for the chart
+  enabled: false
+  # -- certificate mounting filepath for fft_ws, and fft_demosite if tls is configured
+  sslCertSecretFilepath: "/usr/local/share/ca-certificates/"
+ 
+# -- Configure the chart to use nginx ingress 
+nginxIngress:
+  enabled: false
+  controller:
+    replicaCount: 2
+    ingressClass: nginx
+    service:
+      type: LoadBalancer
+
+secrets:
+  reportsOpenAiKey:
+    name: "reports-openai-key"
+    key: "OPENAI_API_KEY"
+    externalSecrets:
+      remoteId: ""
+  reportsTavilyKey:
+    name: "reports-tavily-key"
+    key: "TAVILY_API_KEY"
+    externalSecrets:
+      remoteId: ""
+  geocodeStreets:
+    # -- Name of the Secret containing the geocode Streets API key; set to empty string "" to disable
+    name: "fft-geocode-apikey-secret"
+    # -- Key in the Secret containing the geocode Streets API key
+    key: "apikey"
+    externalSecrets:
+      # -- ID of the remote secret used to pull via external-secrets; setting to "" disables external-secrets for this secret
+      remoteId: ""
+      # -- Property within the remote secret to set as the ExternalSecret .key value
+      # @default -- the whole contents
+      remoteSubkey: ""
+      # -- ExternalSecrets secretStoreRef field
+      # @default -- .externalSecrets.secretStoreRef
+      secretStoreRef: {}
+
+
+  databaseConnection:
+    # -- Name of the Secret containing the Database connection string, used by fft_ws for DATABASE_CONNECTION env; set to empty string "" to disable
+    name: "" #"fft-ws-database-connection-secret"
+    # -- Key in the Secret containing the Database connection string
+    key: "connection-string"
+    externalSecrets:
+      # -- ID of the remote secret used to pull via external-secrets; setting to "" disables external-secrets for this secret
+      remoteId: ""
+      # -- Property within the remote secret to set as the ExternalSecret .key value
+      # @default -- the whole contents
+      remoteSubkey: ""
+      # -- ExternalSecrets secretStoreRef field
+      # @default -- .externalSecrets.secretStoreRef
+      secretStoreRef: {}
+
+
+  usageDbConnection:
+    # -- Name of the Secret containing the Usage DB connection string, used by fft_ws for USAGE_DB_CONN env; set to empty string "" to disable
+    name: "fft-ws-usage-db-conn-secret"
+    # -- Key in the Secret containing the Usage DB connection string
+    key: "connection-string"
+    externalSecrets:
+      # -- ID of the remote secret used to pull via external-secrets; setting to "" disables external-secrets for this secret
+      remoteId: ""
+      # -- Property within the remote secret to set as the ExternalSecret .key value
+      # @default -- the whole contents
+      remoteSubkey: ""
+      # -- ExternalSecrets secretStoreRef field
+      # @default -- .externalSecrets.secretStoreRef
+      secretStoreRef: {}
+
+  fftDemositeFeedbackDb:
+    # -- Name of the Secret containing the fft_demosite Feedback Database connection string, used by demosite for FEEDBACK_DB env; set to empty string "" to disable
+    name: "fft-demosite-feedback-db-secret"
+    # -- Key in the Secret containing the fft_demosite Feedback Database connection string
+    key: "connection-string"
+    externalSecrets:
+      # -- ID of the remote secret used to pull via external-secrets; setting to "" disables external-secrets for this secret
+      remoteId: ""
+      # -- Property within the remote secret to set as the ExternalSecret .key value
+      # @default -- the whole contents
+      remoteSubkey: ""
+      # -- ExternalSecrets secretStoreRef field
+      # @default -- .externalSecrets.secretStoreRef
+      secretStoreRef: {}
+
+  fftDemositeGoogleAnalyticsId:
+    # -- Name of the Secret containing the fft_demosite Google Analytics ID; set to empty string "" to disable
+    name: "fft-demosite-google-analytics-id-secret"
+    # -- Key in the Secret containing the fft_demosite Google Analytics ID
+    key: "apikey"
+    externalSecrets:
+      # -- ID of the remote secret used to pull via external-secrets; setting to "" disables external-secrets for this secret
+      remoteId: ""
+      # -- Property within the remote secret to set as the ExternalSecret .key value
+      # @default -- the whole contents
+      remoteSubkey: ""
+      # -- ExternalSecrets secretStoreRef field
+      # @default -- .externalSecrets.secretStoreRef
+      secretStoreRef: {}
+
+  usersJson:
+    # -- Set to false to skip the helm pre-flight check that usersJson.name is configured (e.g. for OIDC deployments that don't use a users.json k8s secret)
+    required: true
+    # -- The name of the users-json secret in the deployment namespace containing the users.json file; set to "" to disable mounting
+    name: "users-json"
+    externalSecrets:
+      # -- ID of the remote secret used to pull via external-secrets; setting to "" disables external-secrets for this secret
+      remoteId: ""
+      # -- Property within the remote secret to set as the ExternalSecret .key value
+      # @default -- the whole contents
+      remoteSubkey: ""
+      # -- ExternalSecrets secretStoreRef field
+      secretStoreRef:
+        # -- users.json is binary data, which is incompatible with parameterstore
+        name: aws-secrets-manager
+        kind: ClusterSecretStore
+
+  sslCert:
+    # -- Name of the Secret containing the ssl cert for onprem deployments, used by fft_ws, fft_demosite for tls; set to empty string "" to disable
+    name: "fft-ca-cert-secret"
+    # -- Key in the Secret containing the ca cert string
+    key: "ca-cert"
+    externalSecrets:
+      # -- ID of the remote secret used to pull via external-secrets; setting to "" disables external-secrets for this secret
+      remoteId: ""
+      # -- Property within the remote secret to set as the ExternalSecret .key value
+      # @default -- the whole contents
+      remoteSubkey: ""
+      # -- ExternalSecrets secretStoreRef field
+      # @default -- .externalSecrets.secretStoreRef
+      secretStoreRef: {}
+
+  usersLicense:
+    # -- The name of the users-license secret in the deployment namespace containing the users.license file; set to "" to disable mounting
+    name: "users-license"
+    externalSecrets:
+      # -- ID of the remote secret used to pull via external-secrets; setting to "" disables external-secrets for this secret
+      remoteId: ""
+      # -- Property within the remote secret to set as the ExternalSecret .key value
+      # @default -- the whole contents
+      remoteSubkey: ""
+      # -- ExternalSecrets secretStoreRef field
+      secretStoreRef:
+        # -- users.license is binary data, which is incompatible with parameterstore
+        name: aws-secrets-manager
+        kind: ClusterSecretStore
+
+agentic_entity_services:
+  # -- Toggle deployment of agentic_entity_service
+  enabled: false
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle agentic_entity_service ingress
+    enabled: false
+    tlsEnabled: true
+    # -- Ingress healthcheck path
+    healthcheckPath: "/sysinfo"
+    # -- ALB Load Balancer Attributes annotation
+    albLoadBalancerAttributes: "idle_timeout.timeout_seconds=120"
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: agentic-entity-app
+  componentName: agentic-entity
+  image:
+    repository: finchai/agentic_entity_services
+    tag: "1.1.13" #"1.0.5"
+  tagTag: agentic-entity
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "4000m"
+    limits:
+      memory: "4Gi"
+      cpu: "4000m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: REQUESTS_CA_BUNDLE, SERVICE_PORT, TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, OPENAI_MODEL, PROVIDER, MODEL, EXPERT_PROVIDER, EXPERT_MODEL, TAVILY_MAX_RESULTS, MIN_CHUNKS_FOR_VS, K, FFTENRICH_URL, KB_URL
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+
+
+convert_doc:
+  # -- Toggle deployment of convert_doc
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle convert_doc ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/sysinfo"
+    # -- ALB Load Balancer Attributes annotation
+    albLoadBalancerAttributes: "idle_timeout.timeout_seconds=120"
+    tlsEnabled: true 
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: convert-doc-app
+  componentName: convert-doc
+  image:
+    repository: finchai/convert-doc
+    tag: "1.0.13"
+  tagTag: convertdoc
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "4000m"
+    limits:
+      memory: "4Gi"
+      cpu: "4000m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: SERVICE_PORT, TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+coref:
+  # -- Toggle deployment of coref
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle coref ingress
+    enabled: false
+    tlsEnabled: true
+
+  replicaCount: 2
+  pdbMinAvail: 2
+  appName: coref-app
+  componentName: coref
+  image:
+    repository: finchai/corefgpu
+    tag: "1.0.35"
+  tagTag: coreference
+  instanceType: g6.2xlarge
+  podType: gpu
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, MT_REQUEST_TIMEOUT, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE, LITSERVE_MAX_CONCURRENT_REQUESTS, COREF_MAX_PROCESSING_TIME
+  env:
+    MT_REQUEST_TIMEOUT: "4"
+    TS_DEFAULT_WORKERS_PER_MODEL: "4"
+    TS_JOB_QUEUE_SIZE: "28"
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "28"
+    COREF_MAX_PROCESSING_TIME: "25.0"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+disambig:
+  # -- Toggle the deployment of disambig
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle disambig ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/api/v1/sysinfo"
+    tlsEnabled: true
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: disambig-app
+  componentName: disambig
+  image:
+    repository: finchai/disambig
+    tag: "1.15.0"
+  tagTag: disambig
+  resources:
+    requests:
+      memory: "8Gi"
+      cpu: "4000m"
+    limits:
+      memory: "8Gi"
+      cpu: "4000m"
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, DISAMBIG_DEBUG, DISAMBIG_TIMEOUT, DISAMBIG_ENTITY_LIMIT, DISAMBIG_PERSON_LIMIT, FDB_REST_URL, FINCHDB_TIMEOUT, FE_URL, FE_TIMEOUT
+  env:
+    DISAMBIG_DEBUG: "false"      
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+ees:
+  # -- Toggle deployment of ees
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle ees ingress
+    enabled: true 
+    # -- Ingress healthcheck path
+    healthcheckPath: "/sysinfo"
+    # -- ALB Load Balancer Attributes annotation
+    albScheme: "internal"
+    albLoadBalancerAttributes: "idle_timeout.timeout_seconds=4000"
+    tlsEnabled: true
+   
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: ees-app
+  componentName: ees
+  image:
+    repository: finchai/fft
+    tag: "19.10.1"
+  tagTag: fft
+  resources:
+    requests:
+      memory: "16Gi"
+      cpu: "8000m"
+    limits:
+      memory: "16Gi"
+      cpu: "8000m"
+
+  # -- Optional overrides of environment variables per deployment 
+  env:
+    BEN_EXTRACT: ""  
+    ETCD_TARGET: ""
+    NER_HOST: "test" 
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: [ 
+  ]
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+extract_article:
+  # -- Toggle deployment of extract_article
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle extract_article ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/sysinfo"
+    tlsEnabled: true
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: extract-article-app
+  componentName: extract-article
+  image:
+    repository: finchai/extractarticle
+    tag: "1.0.12"
+  tagTag: articleextraction
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1000m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: SERVICE_PORT, TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, _JAVA_OPTIONS
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+feature_extraction:
+  # -- Toggle the deployment of feature_extraction
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle feature_extraction ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/sysinfo"
+    tlsEnabled: true
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: feature-extraction-app
+  componentName: feature-extraction
+  image:
+    repository: finchai/fe
+    tag: "2.6.1"
+  tagTag: featureextraction
+  resources:
+    requests:
+      memory: "8Gi"
+      cpu: "4000m"
+    limits:
+      memory: "8Gi"
+      cpu: "4000m"
+  # -- Optional overrides of environment variables per deployment
+  env:
+    FE_NPROCS: "1"
+    FE_PORT: "8443"      
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+fft_demosite:
+  # -- Toggle deployment of fft_demosite
+  enabled: true
+    
+  enableBackendProtocolHTTPS: true
+  # -- Nodeport used by the service to make fft_demosite externally accessible at the service level
+  nodePort: "30080"
+  # -- exposed ingress and service port
+  portExternal: "8080"
+  # -- port used within the container
+  portContainer: "8080"
+
+  # -- optional overrides of environment variables per deployment 
+  env:
+    # -- Max number of docs stored in the recent docs list. Must be number > 0
+    MAX_RECENT_DOCS: "12"
+    # -- Disable the email server
+    MAIL_SERVER_DISABLE: "false"
+    # -- The sentiment model
+    SENTIMENT_MODEL: "financialTopics"
+    # -- Must be a URL accessible to the browser, as fft_demosite presents this domain to the browser for API connectivity
+    # @default -- The fft_ws Ingress URL
+    WEB_SERVICE_URL: "https://eks-text-api-prod-b.prod-public.finchai.com"
+
+  ingress:
+    # -- Toggle fft_demosite ingress
+    enabled: true
+    # -- Ingress healthcheck path
+    healthcheckPath: "/sysinfo"
+    # -- Scheme of the ALB (internal or internet-facing)
+    albScheme: "internal"
+    # -- TLS Enabled
+    tlsEnabled: true #true
+      #extraAnnotations:
+      #alb.ingress.kubernetes.io/backend-protocol: HTTPS
+    enableBackendProtocolHTTPS: true
+      #annotations: 
+      #alb.ingress.kubernetes.io/backend-protocol: HTTPS 
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: fft-demosite-app
+  componentName: fft-demosite
+  image:
+    repository: finchai/demosite
+    tag: "4.27.0"
+  tagTag: demosite
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "1000m"
+    limits:
+      memory: "4Gi"
+      cpu: "1000m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {
+  }
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+fft_ws:
+  # -- Toggle deployment of fft_ws
+  enabled: false
+
+  # -- Nodeport used by the service to make fft_ws externally accessible at the service level
+  nodePort: "30081"
+  # -- exposed ingress and service port
+  portExternal: "8080"
+  # -- port used within the container
+  portContainer: "8080"
+
+  # -- Enable TLS on the fft-ws server (end-to-end encryption).
+  # When true: fft-ws serves HTTPS on port 8443, the Service exposes port 443,
+  # and the ALB ingress is configured with backend-protocol: HTTPS.
+  # When false (default): fft-ws serves plain HTTP on port 8080; TLS is
+  # terminated at the ALB using the ACM certificate.
+  serverTlsEnabled: false
+
+  # -- Configure the package version of FFT
+  packageVersion: *FFTVersion
+
+  ingress:
+    # -- Toggle fft_ws ingress
+    enabled: true
+    # -- Ingress healthcheck path
+    healthcheckPath: "/api/v1/admin/health"
+    # -- Scheme of the ALB (internal or internet-facing)
+    albScheme: "internal"
+    # -- ALB Load Balancer Attributes annotation
+    albLoadBalancerAttributes: "idle_timeout.timeout_seconds=4000"
+    # -- TLS Enabled
+    tlsEnabled: true
+
+  # -- Log level [debug, info, warn, error]
+  logLevel: "info"
+
+  # -- Whether gateway logging should be enabled or not. Disabling logging in this manner guarantees no uploaded documents will be written plaintext in logs
+  enableLogging: true
+
+  # -- The path into which the users-json secret will inject the users.json file in the fft_ws container, no trailing slash
+  usersJsonSecretFilepath: "/opt/fft_ws/users-json"
+  # -- The name of the ConfigMap containing the package.json configuration; set to "" to disable mounting.  Requires a ConfigMap with .data["package.json"] containing the package.json configuration
+  packageJsonConfigMapName: "package-json-233"
+  # -- The path into which the ConfigMap will inject the package.json configuration in the fft_ws container, no trailing slash
+  packageJsonConfigMapFilepath: "/opt/fft_ws/package-json"
+
+  # -- Override the redis host:port; defaults to the local redis unless it's disabled
+  redisConnection: ""
+
+  # -- Configure the metrics redis host, used for rate-limiting clients; defaults to none
+  metricsRedisHost: ""
+
+  # -- Configure the Operations Environment for metrics prefixes; defaults to namespace
+  operationsEnvironment: ""
+
+  replicaCount: 0
+  pdbMinAvail: 1
+  appName: fft-ws-app
+  componentName: fft-ws
+  image:
+    repository: finchai/fftws
+    tag: "11.13.1"
+  loggingSidecar:
+    enabled: true
+    graylogHost: ""
+    image:
+      repository: finchai/logging-sidecar
+      tag: "2.1.7"
+    resources:
+      requests:
+        memory: 4Gi
+        cpu: 512m
+      limits:
+        memory: 4Gi
+        cpu: 512m
+  tagTag: fftws
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "512m"
+    limits:
+      memory: "4Gi"
+      cpu: "512m"
+  # -- Enable Keycloak / OIDC auth mode.
+  # When true: USER_CONN/GW_USER_CONN default to "oidc", OIDC_PROVIDER_NAMES/GW_OIDC_PROVIDER default to "keycloak",
+  # LICENSE_CONN defaults to license file path, and users-license secret is mounted instead of users-json.
+  # Individual env vars can still be overridden explicitly in a finch-envs file.
+  useKeycloak: false
+
+  # -- Optional overrides of environment variables per deployment
+  env:
+    ARTICLE_EXTRACTOR_URL: ""
+    # -- Keycloak / OIDC settings (all default to "none" unless useKeycloak: true sets them)
+    # @default -- driven by useKeycloak flag: "oidc" when true, file-based when false
+    userConn: ""
+    # @default -- driven by useKeycloak flag: "oidc" when true, file-based when false
+    gwUserConn: ""
+    # @default -- driven by useKeycloak flag: "keycloak" when true, "none" when false
+    oidcProviderNames: ""
+    # @default -- driven by useKeycloak flag: "keycloak" when true, "none" when false
+    gwOidcProvider: ""
+    # @default -- driven by useKeycloak flag: license file path when true, "none" when false
+    licenseConn: ""
+    preferredUserNameIdField: "false"
+    oidcKeycloakResourceClaimName: "resource_access"
+    oidcKeycloakRoleClaimName: "roles"
+    jwtTokenMaxAge: "2m"
+    jwtTokenSigningKey: "none"
+    securityCipherKey: "none"
+    oidcKeycloakAudience: "none"
+    oidcKeycloakClientId: "none"
+    oidcKeycloakClientSecret: "none"
+    oidcKeycloakIssuerUrl: "none"
+    oidcKeycloakJwksUrl: "none"
+    oidcKeycloakScopes: "openid,profile,email,roles,basic"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+finchdb:
+  # -- Toggle deployment of finchdb
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- exposed ingress and service port for dms
+  portExternalDms: "444"
+  # -- exposed ingress and service port for the tcp router
+  portExternalRouter: "445"
+  # -- port used within the container
+  portContainer: "8080"
+  # -- port used within the container for dms
+  portContainerDms: "8083"
+  # -- port used within the container for the tcp router
+  portContainerRouter: "8444"
+
+  ingress:
+    # -- Toggle finchdb ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/api/v1/systemHealth"
+    # -- ALB Target Group Attributes string
+    albTargetGroupAttributes: "load_balancing.algorithm.type=round_robin"
+    tlsEnabled: true
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: finchdb-app
+  componentName: finchdb
+  image:
+    repository: finchai/finchdb
+    tag: "237.4"
+  loggingSidecar:
+    enabled: false
+    graylogHost: ""
+    image:
+      repository: finchai/logging-sidecar
+      tag: "2.1.11"
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: 512m
+      limits:
+        memory: 2Gi
+        cpu: 512m      
+  tagTag: finchdb
+  progressDeadlineSeconds: 1200
+
+  # -- The name of the ConfigMap containing the filter_file.json configuration; set to "" to disable mounting.  Requires a ConfigMap with .data["filter_file.json"] containing the filter_file.json configuration
+  filterFileJsonConfigMapName: "filter-file"
+  # -- The path into which the ConfigMap will inject the filter_file.json configuration in the finchdb container, no trailing slash
+  filterFileJsonConfigMapFilepath: "/opt/FinchDB/data/filters"
+
+  # App Environment Vars
+  env:
+    # -- "TRUE" or "FALSE" - controls whether the startup scripts run or not. Used for debugging
+    START: "TRUE"
+    # -- Deprecated, use .data.dms.enabled; "TRUE" or "FALSE" - determines whether to install DMS or not. If "TRUE", the DMS data image must be present.
+    DMS: ""
+    # -- FQDN of the key-value store host. Only used if DMS is "TRUE"
+    # @default -- Empty String - override to point at the Key-Value stores hostname/service or alb.
+    DMS_KV_HOST: ""
+    # -- fft service host for DMS use. Only used if DMS is "TRUE"
+    # @default -- The FFT Service Hostname
+    DMS_FFT_HOST: ""
+    # -- PORT of the FFT host/ALB. Only used if DMS is "TRUE"
+    # @default -- The FFT Service Port
+    DMS_FFT_PORT: ""
+    # -- "READ", "WRITE"
+    MODE: "READ"
+    # --- "TRUE" or "FALSE"
+    MIGRATE: "FALSE"
+    # --- "TRUE" or "FALSE"
+    FILTER_ENTITIES: "FALSE"
+
+  data:
+    # -- Copy DMS service from init container for FDB;
+    initCopyEnabled: false
+    dms:
+      enabled: false
+      mountPath: /opt/FinchDB/dms
+      volumeSize: "1Gi"
+      image:
+        repository: finchai/finchdb-data-dms
+        tag: 6.0.3
+    people:
+      enabled: true
+      # -- Deprecated, for "WRITE" use external chart configuration for writable finchdb
+      # -- "READ", "NONE"
+      mode: "READ"
+    orgs:
+      enabled: true
+      # -- Deprecated, for "WRITE" use external chart configuration for writable finchdb
+      # -- "READ", "NONE"
+      mode: "READ"
+    things:
+      enabled: true
+      # -- Deprecated, for "WRITE" use external chart configuration for writable finchdb
+      # -- "READ", "NONE"
+      mode: "READ"
+
+  resources:
+    requests:
+      memory: "65Gi"
+      cpu: "10000m"
+    limits:
+      memory: "70Gi"
+      cpu: "10000m"
+      ephemeral-storage: "20Gi"
+
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext:
+    runAsUser: 1024
+    runAsGroup: 1024
+    fsGroup: 1024
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+finchdb_writeable:
+  # -- Toggle deployment of finchdb_writable
+  enabled: false
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- exposed ingress and service port for dms
+  portExternalDms: "444"
+  # -- exposed ingress and service port for the tcp router
+  portExternalRouter: "445"
+  # -- port used within the container
+  portContainer: "8080"
+  # -- port used within the container for dms
+  portContainerDms: "8083"
+  # -- port used within the container for the tcp router
+  portContainerRouter: "40000"
+
+  ingress:
+    # -- Toggle finchdb ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/api/v1/systemHealth"
+    # -- ALB Target Group Attributes string
+    albTargetGroupAttributes: "load_balancing.algorithm.type=round_robin"
+    tlsEnabled: true
+
+  replicaCount: 0
+  pdbMinAvail: 1
+  appName: finchdb-app
+  componentName: finchdb
+  image:
+    repository: finchai/finchdb-upgrade 
+    tag: "237.4"
+  tagTag: finchdb
+  #progressDeadlineSeconds: 1200
+
+  priorityClass:
+    name: ""
+  # -- The name of the ConfigMap containing the filter_file.json configuration; set to "" to disable mounting.  Requires a ConfigMap with .data["filter_file.json"] containing the filter_file.json configuration
+  filterFileJsonConfigMapName: "filter-file"
+  # -- The path into which the ConfigMap will inject the filter_file.json configuration in the finchdb container, no trailing slash
+  filterFileJsonConfigMapFilepath: "/opt/FinchDB/data/filters"
+
+  # App Environment Vars
+  env:
+    # -- "TRUE" or "FALSE" - controls whether the startup scripts run or not. Used for debugging
+    START: "TRUE"
+    # -- Deprecated, use .data.dms.enabled; "TRUE" or "FALSE" - determines whether to install DMS or not. If "TRUE", the DMS data image must be present.
+    DMS: ""
+    # -- FQDN of the key-value store host. Only used if DMS is "TRUE"
+    # @default -- Empty String - override to point at the Key-Value stores hostname/service or alb.
+    DMS_KV_HOST: ""
+    # -- fft service host for DMS use. Only used if DMS is "TRUE"
+    # @default -- The FFT Service Hostname
+    DMS_FFT_HOST: ""
+    # -- PORT of the FFT host/ALB. Only used if DMS is "TRUE"
+    DMS_FDB_REST_HOST: ""
+    DMS_FDB_REST_PORT: "443"
+    # @default -- The FFT Service Port
+    DMS_FFT_PORT: "443"
+    # -- "READ", "WRITE"
+    MODE: "WRITE"
+    # --- "TRUE" or "FALSE"
+    MIGRATE: "FALSE"
+    # --- "TRUE" or "FALSE"
+    FILTER_ENTITIES: "FALSE"
+
+  data:
+    # -- Copy DMS service from init container for writable FDB;
+    initCopyEnabled: true
+    # -- Storage class name for data volumes
+    # @default -- "fdb-data-sc-<namespace>"
+    dataStorageClassName: ""
+    dms:
+      enabled: true
+      mountPath: /opt/FinchDB/dms
+      volumeSize: "1Gi"
+      image:
+        repository: finchai/finchdb-data-dms
+        tag: "6.0.3"
+    people:
+      enabled: true
+      # -- "READ", "WRITE", "NONE"
+      mode: "WRITE"
+    orgs:
+      enabled: true
+      # -- "READ", "WRITE", "NONE"
+      mode: "WRITE"
+    things:
+      enabled: true
+      # -- "READ", "WRITE", "NONE"
+      mode: "WRITE"
+    dataVolume:
+      enabled: true
+      mountPath: /opt/FinchDB/data
+      volumeSize: "30Gi"
+      resources: {}
+
+  resources:
+    requests:
+      memory: "65Gi"
+      cpu: "25000m"
+    limits:
+      memory: "65Gi"
+      cpu: "25000m"
+      ephemeral-storage: "20Gi"
+
+  # -- Resources for init containers (e.g. dms-init)
+  initResources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext:
+    runAsUser: 1024
+    runAsGroup: 1024
+    fsGroup: 1024
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+fin_topic_sentiment:
+  # -- Toggle deployment of fin_topic_sentiment
+  enabled: true
+
+  ingress:
+    # -- Toggle fin_topic_sentiment ingress
+    enabled: false
+    tlsEnabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 2
+  pdbMinAvail: 2
+  appName: fin-topic-sentiment-app
+  componentName: fin-topic-sentiment
+  image:
+    repository: finchai/fintopicsentiment
+    tag: "1.1.50"
+  tagTag: fintopicsentiment
+  instanceType: g4dn.2xlarge
+  podType: gpu
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, MT_REQUEST_TIMEOUT, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE
+  env:
+    MT_REQUEST_TIMEOUT: "24"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+geo:
+  # -- Toggle deployment of geo
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "443"
+
+  ingress:
+    # -- Toggle geo ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/"
+    tlsEnabled: true
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: geo-app
+  componentName: geo
+  image:
+    repository: finchai/geo
+    tag: "5.12.20.Gaz.2.20"
+  tagTag: fft-geo
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "2000m"
+      ephemeral-storage: "40Gi"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+      ephemeral-storage: "40Gi"
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, LOCATION_FIND
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+lang_detect:
+  # -- Toggle deployment of lang_detect
+  enabled: false
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle lang_detect ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/sysinfo"
+    # -- ALB Load Balancer Attributes annotation
+    albLoadBalancerAttributes: "idle_timeout.timeout_seconds=120"
+    tlsEnabled: true 
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: lang-detect-app
+  componentName: lang-detect
+  image:
+    repository: finchai/langdetect
+    tag: "1.1.7"
+  tagTag: language-detection
+  readinessProbe:
+    initialDelaySec: 300
+    periodSec: 120
+  env:  
+    SERVICE_PROCS: "1"
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "2000m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+ner_router:
+  # -- Toggle deployment of ner router
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+  
+
+  ingress:
+    # -- Toggle translation ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/ping"
+    tlsEnabled: true
+
+  appName: ner-router-app
+  componentName: ner-router
+  env: {}
+  image:
+    repository: nginx
+    tag: "1-alpine"
+  tagTag: ner-router
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "64m"
+    limits:
+      memory: "512Mi"
+      cpu: "512m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+ner_de:
+  # -- Toggle deployment of ner_de
+  enabled: false
+
+  # -- exposed service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: ner-de-app
+  componentName: ner-de
+  image:
+    repository: finchai/nergerman
+    tag: "1.0.21"
+  tagTag: ner-de
+  instanceType: g5.2xlarge # ok for supporting doc uploads only no ETL
+  podType: gpu
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, MT_REQUEST_TIMEOUT, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+ner_en:
+  # -- Toggle deployment of ner_en
+  enabled: true
+
+  # -- exposed service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress: 
+    enabled: false
+    tlsEnabled: true
+  
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: ner-en-app
+  componentName: ner-en
+  image:
+    repository: finchai/fft/ner-en
+    tag: "1.0.12"
+  tagTag: ner-en
+  instanceType: g6.2xlarge # ok for supporting doc uploads only no ETL
+  podType: gpu
+#  resources:
+#    requests:
+#      memory: "64Gi"
+#      cpu: "16000m"
+#    limits:
+#      memory: "64Gi"
+#      cpu: "16000m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TS_DEFAULT_WORKERS_PER_MODEL, NUMBER_OF_GPUS, PYTORCH_CUDA_ALLOC_CONF
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+ner_es:
+  # -- Toggle deployment of ner_es
+  enabled: false
+
+  # -- exposed service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: ner-es-app
+  componentName: ner-es
+  image:
+    repository: finchai/nerspanish
+    tag: "1.0.8"
+  tagTag: ner-es
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "4000m"
+    limits:
+      memory: "12Gi"
+      cpu: "4000m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, MT_REQUEST_TIMEOUT, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+ner_fr:
+  # -- Toggle deployment of ner_fr
+  enabled: false
+
+  # -- exposed service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: ner-fr-app
+  componentName: ner-fr
+  image:
+    repository: finchai/nerfrench
+    tag: "2.2.0"
+  tagTag: ner-fr
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "4000m"
+    limits:
+      memory: "12Gi"
+      cpu: "4000m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+ner_nl:
+  # -- Toggle deployment of ner_nl
+  enabled: false
+
+  # -- exposed service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: ner-nl-app
+  componentName: ner-nl
+  image:
+    repository: finchai/nerdutch
+    tag: "2.2.2"
+  tagTag: ner-nl
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "4000m"
+    limits:
+      memory: "12Gi"
+      cpu: "4000m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+relationships_router:
+  # -- Toggle deployment of relationships_router router, which routes requests to re and qe
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle reationships_router ingress
+    enabled: false
+    tlsEnabled: true
+  replicaCount: 2
+  pdbMinAvail: 2
+  appName: relationships-router-app
+  componentName: relationships-router
+  env: {}
+  image:
+    repository: nginx
+    tag: "1-alpine"
+  tagTag: relationextraction-router
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "64m"
+    limits:
+      memory: "512Mi"
+      cpu: "512m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+quotations:
+  # -- Toggle deployment of quotations
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle quotations ingress
+    enabled: false
+    tlsEnabled: true
+
+  replicaCount: 2
+  pdbMinAvail: 2
+  appName: quotations-app
+  componentName: quotations
+  image:
+    repository: finchai/quotationextraction
+    tag: "1.0.3"
+  tagTag: quotationextraction
+  instanceType: g6.2xlarge
+  #instanceType: g5.2xlarge # model needs to get rebuilt to handle this
+  podType: gpu
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TS_INFERENCE_ADDRESS, TS_PRIVATE_KEY_FILE, TS_CERTIFICATE_FILE, TLS_SERVER_KEY, TLS_SERVER_CRT, MT_REQUEST_TIMEOUT, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+relationships:
+  # -- Toggle deployment of relationships
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle relationships ingress
+    enabled: false
+    tlsEnabled: true
+
+  replicaCount: 2
+  pdbMinAvail: 2
+  appName: relationships-app
+  componentName: relationships
+  image:
+    repository: finchai/relationextractiongpu
+    tag: "1.1.51"
+  tagTag: relationextraction
+  instanceType: g6.2xlarge
+  podType: gpu
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TS_INFERENCE_ADDRESS, TS_PRIVATE_KEY_FILE, TS_CERTIFICATE_FILE, TLS_SERVER_KEY, TLS_SERVER_CRT, MT_REQUEST_TIMEOUT, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE, LITSERVE_MAX_CONCURRENT_REQUESTS
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+sentiment:
+  # -- Toggle deployment of sentiment
+  enabled: false
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle sentiment ingress
+    enabled: false
+    tlsEnabled: true
+    # -- Ingress healthcheck path
+    healthcheckPath: "/sysinfo"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: sentiment-app
+  componentName: sentiment
+  image:
+    repository: finchai/sentiment
+    tag: "3.17.12"
+  tagTag: sentiment
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "512m"
+    limits:
+      memory: "2Gi"
+      cpu: "512m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, SERVICE_PROCS
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+summarization:
+  # -- Toggle deployment of summarization
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle summarization ingress
+    enabled: false
+    # -- Ingress healthcheck path
+    healthcheckPath: "/sysinfo"
+    tlsEnabled: true
+
+  replicaCount: 2
+  pdbMinAvail: 2
+  appName: summarization-app
+  componentName: summarization
+  env: {}
+  image:
+    repository: finchai/summarize
+    tag: "2.0.36"
+  loggingSidecar:
+    enabled: true
+    graylogHost: ""
+    image:
+      repository: finchai/logging-sidecar
+      tag: "2.1.7"
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: 512m
+      limits:
+        memory: 2Gi
+        cpu: 512m    
+  tagTag: summarization
+  resources:
+    requests:
+      memory: "8Gi"
+      cpu: "2000m"
+    limits:
+      memory: "8Gi"
+      cpu: "2000m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+tagger_router:
+  # -- Toggle deployment of tagger router
+  enabled: false
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  ingress:
+    # -- Toggle tagger ingress
+    enabled: false
+    tlsEnabled: true
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: tagger-router-app
+  componentName: tagger-router
+  env: {}
+  image:
+    repository: nginx
+    tag: "1-alpine"
+  tagTag: tagger
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "64m"
+    limits:
+      memory: "512Mi"
+      cpu: "512m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+tagger_biztop:
+  # -- Toggle deployment of tagger_biztop
+  enabled: true
+  ingress:
+    tlsEnabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: tagger-biztop-app
+  componentName: tagger-biztop
+  image:
+    repository: finchai/biztoptagger
+    tag: "1.0.9"
+  tagTag: tagger-biztop
+  instanceType: g4dn.2xlarge
+  podType: gpu
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, SERVICE_PORT, MT_REQUEST_TIMEOUT, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE
+  env: {}
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+tagger_iptc:
+  # -- Toggle deployment of tagger_iptc
+  enabled: false
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: tagger-iptc-app
+  componentName: tagger-iptc
+  image:
+    repository: finchai/iptctagger
+    tag: "1.0.12"
+  tagTag: tagger-iptc
+  instanceType: g4dn.2xlarge
+  podType: gpu
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, SERVICE_PORT, MT_REQUEST_TIMEOUT, TS_DEFAULT_WORKERS_PER_MODEL, TS_JOB_QUEUE_SIZE
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+translation_router:
+  # -- Toggle deployment of core translation services
+  enabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  appName: trans-router-app
+  componentName: trans-router
+  env: {}
+  image:
+    repository: nginx
+    tag: "1-alpine"
+  tagTag: machinetranslation-router
+
+  ingress:
+    # -- Toggle translation_router ingress
+    enabled: false
+    tlsEnabled: true
+    # -- Ingress healthcheck path
+    healthcheckPath: "/ping"
+
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "64m"
+    limits:
+      memory: "512Mi"
+      cpu: "512m"
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.affinity
+  affinity: {}
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+trans_ar:
+  # -- Toggle deployment of trans_ar
+  enabled: false
+  ingress:
+    enabled: false
+    tlsEnabled: false
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8080"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: trans-ar-app
+  componentName: trans-ar
+  image:
+    repository: finchai/translation_ar-en #finchai/translation_inf_ar-en
+    tag: "1.1.22"
+  tagTag: machinetranslation
+  tagLanguage: ar
+  instanceType: g6.4xlarge #inf1.6xlarge
+  podType: gpu
+  resources: null
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TS_INFERENCE_ADDRESS, TS_PRIVATE_KEY_FILE, TS_CERTIFICATE_FILE, NEURON_CORES, LANGUAGES, MT_TIME_LIMIT, SERVICE_BACKLOG
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+trans_de:
+  # -- Toggle deployment of trans_de
+  enabled: false
+  ingress:
+   enabled: false
+   tlsEnabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: trans-de-app
+  componentName: trans-de
+  image:
+    repository: finchai/translation_de-en #finchai/translation_inf_de-en
+    tag: "1.1.23"
+  tagTag: machinetranslation
+  tagLanguage: de
+  instanceType: g6.4xlarge #inf1.6xlarge
+  podType: inf
+  resources: null
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, NEURON_CORES, LANGUAGES, MT_TIME_LIMIT, SERVICE_BACKLOG
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+trans_es:
+  # -- Toggle deployment of trans_es
+  enabled: false
+  ingress:
+   enabled: false
+   tlsEnabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: trans-es-app
+  componentName: trans-es
+  image:
+    repository: finchai/translation_es-en #finchai/translation_inf_es-en
+    tag: "1.1.23"
+  tagTag: machinetranslation
+  tagLanguage: es
+  instanceType: g6.4xlarge #inf1.6xlarge
+  podType: inf
+  resources: null
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, NEURON_CORES, LANGUAGES, MT_TIME_LIMIT, SERVICE_BACKLOG
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+trans_fr:
+  # -- Toggle deployment of trans_fr
+  enabled: false
+  ingress:
+   enabled: false
+   tlsEnabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: trans-fr-app
+  componentName: trans-fr
+  image:
+    repository: finchai/translation_fr-en #finchai/translation_inf_fr-en
+    tag: "1.1.23"
+  tagTag: machinetranslation
+  tagLanguage: fr
+  instanceType: g6.4xlarge #inf1.6xlarge
+  podType: inf
+  resources: null
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, NEURON_CORES, LANGUAGES, MT_TIME_LIMIT, SERVICE_BACKLOG
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+trans_nl:
+  # -- Toggle deployment of trans_nl
+  enabled: false
+  ingress:
+   enabled: false
+   tlsEnabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: trans-nl-app
+  componentName: trans-nl
+  image:
+    repository: finchai/translation_nl-en #finchai/translation_inf_nl-en
+    tag: "1.1.23"
+  tagTag: machinetranslation
+  tagLanguage: nl
+  instanceType: g6.4xlarge #inf1.6xlarge
+  podType: inf
+  resources: null
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, NEURON_CORES, LANGUAGES, MT_TIME_LIMIT, SERVICE_BACKLOG
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+trans_ru:
+  # -- Toggle deployment of trans_ru
+  enabled: false
+  ingress:
+    enabled: false
+    tlsEnabled: false
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8080"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: trans-ru-app
+  componentName: trans-ru
+  image:
+    repository: finchai/translation_inf_ru-en
+    tag: "1.1.22"
+  tagTag: machinetranslation
+  tagLanguage: ru
+  instanceType: inf1.6xlarge
+  podType: inf
+  resources: null
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_CRT, TLS_SERVER_KEY, NEURON_CORES, LANGUAGES, MT_TIME_LIMIT, SERVICE_BACKLOG
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+trans_uk:
+  # -- Toggle deployment of trans_uk
+  enabled: false
+  ingress:
+   enabled: false
+   tlsEnabled: true
+
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: trans-uk-app
+  componentName: trans-uk
+  image:
+    repository: finchai/translation_uk-en #finchai/translation_inf_uk-en
+    tag: "1.1.23"
+  tagTag: machinetranslation
+  tagLanguage: uk
+  instanceType: g6.4xlarge #inf1.6xlarge
+  podType: inf
+  resources: null
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TS_INFERENCE_ADDRESS, TS_PRIVATE_KEY_FILE, TS_CERTIFICATE_FILE, NEURON_CORES, LANGUAGES, MT_TIME_LIMIT, SERVICE_BACKLOG
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+trans_zh:
+  # -- Toggle deployment of trans_zh
+  enabled: true
+  ingress:
+    enabled: false
+    tlsEnabled: true
+
+  # -- exposed ingress and service port
+  portExternal: "443"
+  # -- port used within the container
+  portContainer: "8443"
+
+  replicaCount: 1
+  pdbMinAvail: 1
+  appName: trans-zh-app
+  componentName: trans-zh
+  image:
+    repository: finchai/translation_zh-en
+    tag: "1.1.22"
+  tagTag: machinetranslation
+  tagLanguage: zh
+  instanceType: g6.4xlarge
+  podType: gpu
+  resources: null
+  # -- Override/set env vars; any key is passed through to the pod. Keys with explicit
+  #    template defaults: TLS_SERVER_KEY, TLS_SERVER_CRT, TLS_SERVER_RCA, NEURON_CORES, LANGUAGES, MT_TIME_LIMIT, SERVICE_BACKLOG
+  env: {}
+  # -- Additional env applied to the pod spec; list of name-value pairs
+  extraEnv: []
+  # -- Additional envFrom applied to the pod spec; list of configMapRef/secretRef
+  extraEnvFrom: []
+  # -- Additional Labels applied to pod spec and workload selector
+  extraSelectorLabels: {}
+  # -- Additional annotations applied to the pod spec
+  extraAnnotations: {}
+  # -- Pod Security Context
+  securityContext: {}
+  # -- Pod DNS Config
+  dnsConfig: {}
+  # -- Pod Tolerations
+  tolerations: []
+  # -- Pod Node Selector Override (defaults to global.nodeSelector)
+  nodeSelector: {}
+  # -- Additional Pod Image Pull Secrets (Merged with global.imagePullSecrets)
+  imagePullSecrets: []
+  # -- ServiceAccount name override
+  # @default -- The default ServiceAccount
+  serviceAccountName: ""
+  # -- Pod Affinity.  Uses `tpl` so must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- Require a specific .instanceType and require avoid all .podType
+  affinity: *AffinityAvoidPodtypeRequireInstance
+  # -- Pod TopologySpreadConstraints.  Uses `tpl` so it must be a string, but supports processing "{{ helm blocks }}" passed through values
+  # @default -- .global.topologySpreadConstraints
+  topologySpreadConstraints: {}
+
+
+certificate:
+  # -- Set to false to skip creating the tls-certificate Certificate resource (e.g. when sharing a namespace with finch-analyst)
+  create: true
+  duration: 2160h  # 90 days
+  renewBefore: 360h # 15 days
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+############################################
+## Testing config
+############################################
+testing:
+  autodestroy:
+    # -- Toggle the autodestroy feature; it will forcibly delete the namespace based on a cron
+    enabled: false
+    # -- The cron schedule
+    cronSchedule: "0 18 * * *"
+    # -- The cron timezone
+    cronTimeZone: "America/New_York"
+    image:
+      repository: "bitnami/kubectl"
+      tag: "latest"
+  cronscaledown:
+    # -- Toggle the cronscaledown feature; it will set every deployment to 0 replicas at the scheduled time
+    enabled: false
+    # -- The cron schedule
+    cronSchedule: "0 18 * * *"
+    # -- The cron timezone
+    cronTimeZone: "America/New_York"
+    image:
+      repository: "bitnami/kubectl"
+      tag: "latest"
+  cronscaleup:
+    # -- Toggle the cronscaleup feature; it will set every deployment to 1 replicas at the scheduled time
+    enabled: false
+    # -- The cron schedule
+    cronSchedule: "0 8 * * *"
+    # -- The cron timezone
+    cronTimeZone: "America/New_York"
+    image:
+      repository: "bitnami/kubectl"
+      tag: "latest"
+  cronunsuspend:
+    # -- Toggle the cronunsuspend feature; it will un-suspend listed cronjobs at the scheduled time
+    enabled: false
+    # -- The cron schedule for execution; typically scheduled to run after the cronscaledown
+    cronSchedule: "15 18 * * *"
+    # -- The cron timezone
+    cronTimeZone: "America/New_York"
+    # -- The list of cronjobs to unsuspend
+    cronsToUnsuspend:
+      - "cronscaledown-namespace"
+    image:
+      repository: "bitnami/kubectl"
+      tag: "latest"
+
+# -- Bitnami etcd subchart overrides
+# client.secureTransport=false: disables TLS on the client port (2379); services connect
+# via http://. Avoids cert-manager dependency on fresh namespaces.
+# peer.secureTransport=false: pod IPs are dynamic and cannot be added to cert SANs at
+# issuance time; etcd's VerifyPeerCertificate verifies the connecting IP against cert
+# SANs causing all peer connections to fail. Peer comms are intra-cluster so TLS is
+# not required at that layer.
+# -- Keycloak (optional, identity and access management)
+# Custom templates in templates/keycloak/ handle keycloak + postgres deployments.
+keycloak:
+  enabled: false
+  replicaCount: 0
+  image:
+    registry: "767397961866.dkr.ecr.us-east-1.amazonaws.com"
+    repository: "finchai/keycloak"
+    tag: "v0.1.10"
+    pullPolicy: IfNotPresent
+  postgresql:
+    image:
+      registry: "767397961866.dkr.ecr.us-east-1.amazonaws.com"
+      repository: "finchai/postgres"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+  app:
+    enabled: true
+    replicaCount: 1
+    tlsEnabled: true
+    tlsSecretName: "tls-secret"
+    ingress:
+      enabled: false
+      extraAnnotations: {}
+      tlsSecretName: ""
+    certificate:
+      enabled: false
+      duration: "8760h"
+      renewBefore: "720h"
+      issuerRef:
+        name: "internal-ca-issuer"
+        kind: "ClusterIssuer"
+    env:
+      hostname: ""
+      dbService: ""
+      dbName: "bitnami_keycloak"
+      dbUsername: "bn_keycloak"
+      db: "postgres"
+      httpEnabled: "true"
+      proxyHeaders: "xforwarded"
+      fftApiClientSecret: "none"
+      faApiClientSecret: "none"
+      afApiClientSecret: "none"
+      frmApiClientSecret: "none"
+      faUrl: ""      # explicit override; auto-computed from baseDomain + hostnamePrefix/Suffix when externalDns.enabled
+      faIngressHostname: "analyst-api"  # FA ingress hostname segment (before suffix + baseDomain)
+      tasrUrl: ""
+      fftUrl: ""     # explicit override; auto-computed from fft_ws ingress hostname when fft_ws.enabled + externalDns.enabled
+      smtpServer: ""
+      adminUser: "admin"
+      adminPassword: "admin123"
+    extraEnv: []
+    postgres:
+      username: "bn_keycloak"
+      database: "bitnami_keycloak"
+      password: "keycloak123"
+      postgresPassword: "keycloak123"
+      storageSize: "8Gi"
+      port: "5432"
+      tlsEnabled: false
+      tlsSecretName: "tls-secret"
+      tlsCaSecretName: ""
+      sslMode: "require"
+      ldapEnabled: false
+      logHostname: false
+      logConnections: false
+      logDisconnections: false
+      pgauditLogCatalog: "off"
+      clientMinMessages: "error"
+      sharedPreloadLibraries: "pgaudit"
+      debug: "false"
+      extraEnv: []
+
+etcd:
+  auth:
+    client:
+      secureTransport: false
+      enableAuthentication: false
+    peer:
+      secureTransport: false
+      enableAuthentication: false

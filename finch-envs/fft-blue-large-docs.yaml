@@ -1,0 +1,234 @@
+# finch-envs/fft-blue-large-docs.yaml
+#
+# Consolidated large-document processing overlay.
+# Merges fft-large-docs-example.yaml settings into a single override file.
+# Replica counts are intentionally reduced for the blue deployment.
+# Services not needed for large-doc processing are disabled.
+
+fft_ws:
+  replicaCount: 2
+  env:
+    MAX_REQUEST_SIZE_KB: "2000000" # 2GB limit for document uploads
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 10 # Allows up to 200 seconds of unresponsiveness during heavy loads
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+ees:
+  replicaCount: 2
+  env:
+    EES_TIMEOUT_TAGGERS: "3600000" # 1 hour timeout
+    EES_TIMEOUT_PLUGINS: "3600000" # 1 hour timeout
+    #EES_TRUNC_SIZE_PLUGINS: "-1"   # Disable truncation for large documents
+    RE_MODELS: "re"                # Ensure relationship extraction is enabled
+    NER_LANGS: "en"                # Limit to English for the test case
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 2500m
+      memory: 3Gi
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 10 # Allows up to 200 seconds of unresponsiveness during heavy loads
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+disambig:
+  replicaCount: 2
+  env:
+    FINCHDB_TIMEOUT: "3600000" # 1 hour timeout
+    DISAMBIG_TIMEOUT: "3600000" # 1 hour timeout
+    DISAMBIG_ENTITY_LIMIT: "10000"
+    DISAMBIG_PERSON_LIMIT: "100"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 3.5Gi
+    limits:
+      cpu: 4000m
+      memory: 5Gi
+
+coref:
+  replicaCount: 5
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "28"
+    TS_JOB_QUEUE_SIZE: "100"
+    COREF_MAX_PROCESSING_TIME: "360.0" # 6-minute timeout to complete 1Mb text docs without truncation
+  resources:
+    requests:
+      cpu: 500m
+      memory: 5Gi
+    limits:
+      cpu: 1500m
+      memory: 6.5Gi
+
+ner_en:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 10 # Allows up to 200 seconds of unresponsiveness during heavy loads
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "32"
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 1500m
+      memory: 3Gi
+
+relationships:
+  replicaCount: 5
+  env:
+    MT_REQUEST_TIMEOUT: "3600000" # 1 hour timeout
+    LITSERVE_MAX_CONCURRENT_REQUESTS: "28"
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 1500m
+      memory: 3Gi
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 15
+  readinessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 5
+
+convert_doc:
+  enabled: true
+  replicaCount: 1
+  ingress:
+    enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+lang_detect:
+  replicaCount: 1
+  env:
+    LANG_DETECT_TIMEOUT: "1h"
+    LANG_DETECT_QUEUE_TIMEOUT: "1h"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 1.5Gi
+    limits:
+      cpu: 500m
+      memory: 2.5Gi
+
+feature_extraction:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1.5Gi
+    limits:
+      cpu: 1500m
+      memory: 2Gi
+  livenessProbe:
+    timeoutSeconds: 10
+    periodSeconds: 20
+    failureThreshold: 15
+
+geo:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 2Gi
+    limits:
+      cpu: 500m
+      memory: 3.5Gi
+
+finchdb:
+  replicaCount: 1
+
+# Services disabled for blue large-doc deployment
+fin_topic_sentiment:
+  enabled: false
+  replicaCount: 0
+ner_de:
+  enabled: false
+  replicaCount: 0
+ner_es:
+  enabled: false
+  replicaCount: 0
+ner_fr:
+  enabled: false
+  replicaCount: 0
+ner_nl:
+  enabled: false
+  replicaCount: 0
+quotations:
+  enabled: false
+  replicaCount: 0
+tagger_biztop:
+  enabled: false
+  replicaCount: 0
+tagger_router:
+  enabled: false
+  replicaCount: 0
+ner_router:
+  enabled: false
+  replicaCount: 0
+trans_ar:
+  enabled: false
+  replicaCount: 0
+trans_de:
+  enabled: false
+  replicaCount: 0
+trans_es:
+  enabled: false
+  replicaCount: 0
+trans_fr:
+  enabled: false
+  replicaCount: 0
+trans_nl:
+  enabled: false
+  replicaCount: 0
+trans_ru:
+  enabled: false
+  replicaCount: 0
+trans_uk:
+  enabled: false
+  replicaCount: 0
+trans_zh:
+  enabled: false
+  replicaCount: 0
+summarization:
+  enabled: false
+  replicaCount: 0
+extract_article:
+  enabled: false
+fft_demosite:
+  enabled: false
+  replicaCount: 0

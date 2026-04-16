@@ -1,0 +1,114 @@
+convert_doc:
+  replicaCount: 1
+  pdbMinAvail: 0
+coref:
+  replicaCount: 1
+  pdbMinAvail: 0
+disambig:
+  replicaCount: 1
+  pdbMinAvail: 0
+ees:
+  replicaCount: 1
+  pdbMinAvail: 0
+extract_article:
+  replicaCount: 1
+  pdbMinAvail: 0
+feature_extraction:
+  replicaCount: 1
+  pdbMinAvail: 0
+fft_demosite:
+  replicaCount: 1
+  pdbMinAvail: 0
+fft_ws:
+  replicaCount: 1
+  pdbMinAvail: 0
+fin_topic_sentiment:
+  replicaCount: 1
+  pdbMinAvail: 0
+geo:
+  replicaCount: 1
+  pdbMinAvail: 0
+headline:
+  replicaCount: 1
+  pdbMinAvail: 0
+lang_detect:
+  replicaCount: 1
+  pdbMinAvail: 0
+nationality:
+  replicaCount: 1
+  pdbMinAvail: 0
+ner_router:
+  replicaCount: 1
+  pdbMinAvail: 0
+ner_de:
+  replicaCount: 1
+  pdbMinAvail: 0
+ner_es:
+  replicaCount: 1
+  pdbMinAvail: 0
+ner_fr:
+  replicaCount: 1
+  pdbMinAvail: 0
+ner_nl:
+  replicaCount: 1
+  pdbMinAvail: 0
+relationships_router:
+  replicaCount: 1
+  pdbMinAvail: 0
+quotations:
+  replicaCount: 1
+  pdbMinAvail: 0
+relationships:
+  replicaCount: 1
+  pdbMinAvail: 0
+sentiment:
+  replicaCount: 1
+  pdbMinAvail: 0
+summarization:
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_router:
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_biztop:
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_esg:
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_ia:
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_iptc:
+  replicaCount: 1
+  pdbMinAvail: 0
+tagger_naics:
+  replicaCount: 1
+  pdbMinAvail: 0
+translation_router:
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_ar:
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_de:
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_es:
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_fr:
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_nl:
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_ru:
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_uk:
+  replicaCount: 1
+  pdbMinAvail: 0
+trans_zh:
+  replicaCount: 1
+  pdbMinAvail: 0

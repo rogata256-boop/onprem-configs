@@ -1,0 +1,183 @@
+global:
+  image:
+    registry: "559100300467.dkr.ecr.us-east-1.amazonaws.com"
+  tagCluster: "prod-3"
+  tagEnvironment: "feeds"
+  tagNamespace: "" # Default to chart namespace
+
+anchors:
+  tagEnv: &Env feeds
+  fftVersion: &FFTVersion "204"
+
+externalDns:
+  enabled: true
+  hostnamePrefix: "eks-"
+
+secrets:
+  usersJson:
+    name: ""
+
+aws:
+  enabled: true
+  acmCertArn: "arn:aws:acm:us-east-1:559100300467:certificate/509ef353-5c1e-405b-96c6-d384bdf1ca19" # finchcomputing.com
+  additionalAcmCerts:
+    - "arn:aws:acm:us-east-1:559100300467:certificate/d2a4f73e-4f6e-40d3-a8a7-3ab9085af547" # finchai.com
+
+finchdb:
+  enabled: false
+redis:
+  enabled: false
+disambig:
+  enabled: false
+featureextraction:
+  enabled: false
+geo:
+  enabled: false
+fft:
+  enabled: false
+fftws:
+  nodePort: ""
+  enabled: true
+  ingress:
+    enabled: true
+    albScheme: "internet-facing"
+  replicaCount: 2
+  pdbMinAvail: 1
+  redisConnection: "redis-feeds-1-demo.finchcomputing.com:6379"
+  metricsRedisHost: "redis-feeds-1-demo.finchcomputing.com"  
+  operationsEnvironment: "feeds-va128"
+  extraAnnotations:
+    fluentbit.io/exclude: "true"
+  externalArticleExtraction:
+    enabled: true
+    url: "http://articleextraction-va128.prod.local:9191/api/v1/extract-article"
+  externalFFT:
+    # NOTE: if you are utilizing an external FFT connection you must know how to configure the LANGS_* env vars 
+    # according to the external environments configuration / capabilities
+    enabled: true
+    envLANGS_COREF: "en"
+    envLANGS_DISAMBIG: "en,nl,de,fr,es,ar,ru,zh"
+    envLANGS_DOCSENT: "en"
+    envLANGS_DOCSUMM: "en,de,zh"
+    envLANGS_ENRICH: "en,nl,de,fr,es,ar,ru,zh"
+    envLANGS_ENTSENT: "en"
+    envLANGS_ENTSUMM: "en,de,zh"
+    envLANGS_HEADLINES: "none"
+    envLANGS_INFOEXTRACT: "en"
+    envLANGS_RE: "en"
+    envLANGS_SALIENCE: "en,de,zh"
+    envLANGS_SENTSAL: "en,de,zh"
+    envLANGS_TAGS: "en"
+    envLANGS_TOPICVECTOR: "en,de,zh"
+    envLANGS_TXTCORCASE: "en"
+    envLANGS_TXTCORPUNCT: "en"
+    envLANGS_TXTCORTOKEN: "en"
+    envSUPPORTED_TRANSLATIONS: "de-en,zh-en"
+  diagLogLevel: "info"
+  loggingSidecar:
+    graylogHost: "graylog-prod-data.finchcomputing.com"
+  # external FFT url overrides and others...
+  envLANGS_GEOCODE_STREETS: "en,de,zh"
+  envCONVERT_DOC_SERVICE_URL: "http://convertdoc-service.prod-va128:8080"
+  envCORRECT_TEXT_URL: "http://summarization-service.prod-va128:8080/api/v1/correctText"
+  envDETECT_LANG_BASE_URL: "http://langdetect-service.prod-va128:8080"
+  envENTITY_SEARCH_URL: "none"
+  envFDB_REST_URL: "http://finchdb-rest-service.prod-va128:8084"
+  envFFT_BASE_URL: "http://fft-service.prod-va128:8080"
+  envFINTOP_SENT_URL: "http://fintopic-service.prod-va128:8080/predictions/financialTopics"
+  envGEO_SERVICE_URL: "http://geo-service.prod-va128:80/services" # + /services ? 
+  envHEADLINE_GENERATOR_URL: "none"
+  envIA_FDB_REST_URL: "none"
+  envIA_SERVICE_URL: "http://tagger-service.prod-va128:8181"
+  envKB_DMS_URL: "http://finchdb-dms-service.prod-va128:8083"
+  envSENTIMENT_URL: "http://sentiment-service.prod-va128:8080/api/v1/doc-sentiment"
+  envSUMMARIZE_URL: "http://summarization-service.prod-va128:8080/api/v1/summarize"
+  envTIKA_SERVICE_URL: "none"
+  envTRANSLATE_LANG_BASE_URL: "http://trans-service.prod-va128:8296"
+  envTRIT_AGENT_URL: "none"
+  # TODO: fill out remaining other services that are not specific to langs** 
+  # This value is passed from the top level values.yaml and
+  # is configured via the package-json file
+  # packageJsonConfigMapName: ""
+minisite:
+  nodePort: ""
+  enabled: true
+  ingress:
+    enabled: true
+    albScheme: "internet-facing"
+  replicaCount: 2
+  pdbMinAvail: 1
+headline:
+  enabled: false
+articleextraction:
+  enabled: false
+ner_router:
+  enabled: false
+ner_nl:
+  enabled: false
+ner_fr:
+  enabled: false
+ner_es:
+  enabled: false
+ner_de:
+  enabled: false
+entitycorrection:
+  enabled: false
+relationextraction_router:
+  enabled: false
+quotationextraction:
+  enabled: false
+relationextraction:
+  enabled: false
+fintopic:
+  enabled: false
+coref:
+  enabled: false
+nationality:
+  enabled: false
+translation_router:
+  enabled: false
+trans_zh:
+  enabled: false
+trans_de:
+  enabled: false
+trans_ar:
+  enabled: false
+trans_uk:
+  enabled: false
+trans_ru:
+  enabled: false
+trans_fr:
+  enabled: false
+trans_es:
+  enabled: false
+trans_nl:
+  enabled: false
+sentiment:
+  enabled: false
+summarization:
+  enabled: false
+tagger_ia:
+  enabled: false
+tagger_router:
+  enabled: false
+tagger_esg:
+  enabled: false
+tagger_naics:
+  enabled: false
+tagger_iptc:
+  enabled: false
+tika:
+  enabled: false
+convertdoc:
+  enabled: false
+ipaddress:
+  enabled: false
+langdetect:
+  enabled: false
+link:
+  enabled: false
+informationextraction:
+  enabled: false
+finchllm:
+  enabled: false
