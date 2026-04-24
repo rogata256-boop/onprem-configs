@@ -1,0 +1,313 @@
+1,263c1,47
+< """
+< OpenAI-Compatible Chat Provider with Custom Headers Support
+< 
+< This module provides a custom chat model provider that extends langchain-ollama's
+< ChatOllama to support OpenAI-compatible APIs (Ollama, Groq, etc.) with custom
+< request headers, particularly for request ID tracking.
+< 
+< Key Features:
+< - Works with any OpenAI-compatible API (Ollama, Groq, etc.)
+< - Supports custom request ID headers (configurable via environment variable)
+< - Compatible with LangGraph's init_chat_model via custom provider registration
+< - Maintains full compatibility with langchain-ollama features
+< 
+< API Compatibility:
+< - **Ollama**: Supports OpenAI-compatible /v1/chat/completions endpoint
+< - **Groq**: Fully OpenAI-compatible API at https://api.groq.com/openai/v1
+<   (See: https://console.groq.com/docs/openai)
+< 
+< Usage:
+<     # Via environment variables
+<     export CUSTOM_LLM_BASE_URL="https://api.groq.com/openai/v1"
+<     export CUSTOM_LLM_KEY="your-groq-api-key"
+<     export CUSTOM_LLM_MODEL="gpt-oss:120b"
+<     export CUSTOM_LLM_REQUEST_ID_HEADER="X-Request-ID"  # Optional, defaults to X-Request-ID
+<     
+<     # Direct instantiation with request_id from state
+<     model = ChatOpenAICompatible(
+<         model="gpt-oss:120b",
+<         base_url="https://api.groq.com/openai/v1",
+<         api_key="your-groq-api-key",
+<         request_id=state.get("request_id"),  # Pass from LangGraph state
+<         request_id_header="X-Request-ID"
+<     )
+<     
+<     # With init_chat_model (requires provider registration)
+<     model = init_chat_model(
+<         model="gpt-oss:120b",
+<         model_provider="openai_compatible",
+<         base_url="https://api.groq.com/openai/v1",
+<         api_key="your-groq-api-key",
+<         request_id_header="X-Request-ID"
+<     )
+< 
+< Request ID Tracking:
+<     The provider includes a request ID in the custom header for each request.
+<     Pass the request_id parameter (typically from your LangGraph state) to maintain
+<     consistent tracking across your graph execution. If not provided, a UUID will
+<     be generated at initialization time. This is useful for tracking requests across
+<     distributed systems and debugging issues.
+< """
+< 
+< from __future__ import annotations
+< 
+< import os
+< import uuid
+< from typing import Any, Dict, Optional
+< 
+< from langchain_ollama import ChatOllama
+< from ollama import AsyncClient, Client
+< 
+< 
+< class ChatOpenAICompatible(ChatOllama):
+<     """
+<     OpenAI-compatible chat model with custom header support.
+<     
+<     This class extends ChatOllama to add support for custom request headers,
+<     particularly for request ID tracking. It works with any OpenAI-compatible
+<     API including Ollama and Groq.
+<     
+<     Attributes:
+<         request_id_header: Name of the header to use for request ID.
+<                           Defaults to value from CUSTOM_LLM_REQUEST_ID_HEADER
+<                           environment variable or "X-Request-ID".
+<     
+<     API Compatibility Notes:
+<         - Groq API is fully OpenAI-compatible (https://console.groq.com/docs/openai)
+<         - Ollama supports OpenAI-compatible endpoints
+<         - Both support the same chat completions format and parameters
+<     
+<     Example:
+<         >>> # In a LangGraph node, pass request_id from state
+<         >>> def generate_query_node(state: OverallState, config: RunnableConfig):
+<         ...     configurable = Configuration.from_runnable_config(config)
+<         ...     # Pass request_id from state to track through execution
+<         ...     llm = configurable.get_query_generator_model(
+<         ...         temperature=0.0,
+<         ...         request_id=state.get("request_id")
+<         ...     )
+<         ...     response = llm.invoke("What is the capital of France?")
+<         ...     return {"response": response}
+<     """
+<     
+<     request_id_header: str = "X-Request-ID"
+<     request_id: Optional[str] = None
+<     
+<     def __init__(
+<         self,
+<         model: str = "gpt-oss:120b",
+<         request_id: Optional[str] = None,
+<         request_id_header: Optional[str] = None,
+<         **kwargs: Any
+<     ):
+<         """
+<         Initialize the OpenAI-compatible chat model.
+<         
+<         Args:
+<             model: Model name to use (e.g., "gpt-oss:120b")
+<             request_id: Optional request ID to use. If None, a UUID will be generated.
+<                        This should typically come from your LangGraph state for
+<                        consistent tracking across the graph execution.
+<             request_id_header: Custom header name for request ID. 
+<                              If None, uses CUSTOM_LLM_REQUEST_ID_HEADER env var
+<                              or defaults to "X-Request-ID"
+<             **kwargs: Additional arguments passed to ChatOllama
+<         """
+<         # Initialize the parent ChatOllama class first (required for Pydantic models)
+<         super().__init__(model=model, **kwargs)
+<         
+<         # Set the request ID after parent initialization (from parameter or generate new one)
+<         self.request_id = request_id or str(uuid.uuid4())
+<         
+<         # Set the request ID header from parameter, env var, or default
+<         if request_id_header:
+<             self.request_id_header = request_id_header
+<         else:
+<             self.request_id_header = os.environ.get(
+<                 "CUSTOM_LLM_REQUEST_ID_HEADER", "X-Request-ID"
+<             )
+<     
+<     def _get_request_headers(self) -> Dict[str, str]:
+<         """
+<         Generate headers for the request, including the custom request ID.
+<         
+<         Returns:
+<             Dictionary of headers to include in the request
+<         """
+<         headers = {}
+<         
+<         # Use the request ID from initialization (from state or generated)
+<         headers[self.request_id_header] = self.request_id
+<         
+<         return headers
+<     
+<     def _create_client(self) -> Client:
+<         """
+<         Create the Ollama client with custom headers.
+<         
+<         Returns:
+<             Configured Ollama Client instance
+<         """
+<         # Get custom headers
+<         custom_headers = self._get_request_headers()
+<         
+<         # Create client with custom headers
+<         client_kwargs = {
+<             "host": self.base_url,
+<             "headers": custom_headers
+<         }
+<         
+<         # Add timeout if configured
+<         if hasattr(self, "timeout") and self.timeout:
+<             client_kwargs["timeout"] = self.timeout
+<         
+<         return Client(**client_kwargs)
+<     
+<     def _create_async_client(self) -> AsyncClient:
+<         """
+<         Create the async Ollama client with custom headers.
+<         
+<         Returns:
+<             Configured AsyncClient instance
+<         """
+<         # Get custom headers
+<         custom_headers = self._get_request_headers()
+<         
+<         # Create async client with custom headers
+<         client_kwargs = {
+<             "host": self.base_url,
+<             "headers": custom_headers
+<         }
+<         
+<         # Add timeout if configured
+<         if hasattr(self, "timeout") and self.timeout:
+<             client_kwargs["timeout"] = self.timeout
+<         
+<         return AsyncClient(**client_kwargs)
+<     
+<     @property
+<     def _llm_type(self) -> str:
+<         """Return identifier for this LLM type."""
+<         return "openai_compatible"
+<     
+<     @classmethod
+<     def is_lc_serializable(cls) -> bool:
+<         """Return whether this model can be serialized by Langchain."""
+<         return True
+<     
+<     @classmethod
+<     def get_lc_namespace(cls) -> list[str]:
+<         """Get the namespace of the langchain object."""
+<         return ["langchain", "chat_models", "openai_compatible"]
+< 
+< 
+< def get_openai_compatible_model(
+<     model: str = "gpt-oss:120b",
+<     base_url: Optional[str] = None,
+<     api_key: Optional[str] = None,
+<     request_id_header: Optional[str] = None,
+<     **kwargs: Any
+< ) -> ChatOpenAICompatible:
+<     """
+<     Factory function to create an OpenAI-compatible chat model.
+<     
+<     This function provides a convenient way to create a ChatOpenAICompatible
+<     instance with environment variable fallbacks.
+<     
+<     Args:
+<         model: Model name (default: "gpt-oss:120b")
+<         base_url: Base URL for the API. Falls back to CUSTOM_LLM_BASE_URL env var
+<                  or "https://ollama.com" for Ollama
+<         api_key: API key for authentication. Falls back to CUSTOM_LLM_KEY env var
+<         request_id_header: Custom header name for request ID. Falls back to
+<                           CUSTOM_LLM_REQUEST_ID_HEADER env var or "X-Request-ID"
+<         **kwargs: Additional arguments passed to ChatOpenAICompatible
+<     
+<     Returns:
+<         Configured ChatOpenAICompatible instance
+<     
+<     Example:
+<         >>> # For Groq
+<         >>> model = get_openai_compatible_model(
+<         ...     model="gpt-oss:120b",
+<         ...     base_url="https://api.groq.com/openai/v1",
+<         ...     api_key="gsk_..."
+<         ... )
+<         >>> 
+<         >>> # For Ollama
+<         >>> model = get_openai_compatible_model(
+<         ...     model="gpt-oss:120b",
+<         ...     base_url="https://ollama.com"
+<         ... )
+<     """
+<     # Set base_url with environment variable fallback
+<     if base_url is None:
+<         base_url = os.environ.get("CUSTOM_LLM_BASE_URL", "https://ollama.com")
+<     
+<     # Set api_key with environment variable fallback (optional for local Ollama)
+<     if api_key is None:
+<         api_key = os.environ.get("CUSTOM_LLM_KEY")
+<     
+<     # Prepare kwargs for model initialization
+<     model_kwargs = {
+<         "model": model,
+<         "base_url": base_url,
+<         "request_id_header": request_id_header,
+<         **kwargs
+<     }
+<     
+<     # Only add api_key if it's provided (not needed for local Ollama)
+<     if api_key:
+<         model_kwargs["api_key"] = api_key
+<     
+<     return ChatOpenAICompatible(**model_kwargs)
+---
+> from __future__ import annotations
+> 
+> import os
+> import uuid
+> from typing import Any, Optional
+> 
+> from langchain_openai import ChatOpenAI
+> 
+> 
+> class ChatOpenAICompatible(ChatOpenAI):
+>     request_id_header: str = "X-Request-ID"
+>     request_id: Optional[str] = None
+> 
+>     def __init__(
+>         self,
+>         model: str = "gpt-oss:120b",
+>         request_id: Optional[str] = None,
+>         request_id_header: Optional[str] = None,
+>         base_url: Optional[str] = None,
+>         api_key: Optional[str] = None,
+>         **kwargs: Any,
+>     ):
+>         # Prepare values FIRST (local variables only)
+>         rid = request_id or str(uuid.uuid4())
+>         header_name = (
+>             request_id_header
+>             or os.environ.get("CUSTOM_LLM_REQUEST_ID_HEADER", "X-Request-ID")
+>         )
+> 
+>         default_headers = {header_name: rid}
+> 
+>         # Call parent FIRST
+>         super().__init__(
+>             model=model,
+>             base_url=base_url or os.environ.get("CUSTOM_LLM_BASE_URL"),
+>             api_key=api_key or os.environ.get("CUSTOM_LLM_KEY"),
+>             default_headers=default_headers,
+>             **kwargs,
+>         )
+> 
+>         # THEN assign attributes
+>         self.request_id = rid
+>         self.request_id_header = header_name
+> 
+>     @property
+>     def _llm_type(self) -> str:
+>         return "openai_compatible"
+\ No newline at end of file

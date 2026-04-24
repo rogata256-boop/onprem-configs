@@ -1,0 +1,11 @@
+48a49,58
+>     
+>     @staticmethod
+>     def _enforce_knn_tool():
+>         """Return True if KNN tool should be enforced for unmatched tool calls."""
+>         return os.environ.get("ENFORCE_KNN_TOOL", "false").lower() == "true"
+> 
+>     @staticmethod
+>     def _transliterate_non_ascii():
+>         """Return True if non-ASCII characters in streamed output should be transliterated to ASCII."""
+>         return os.environ.get("TRANSLITERATE_NON_ASCII", "false").lower() == "true"
