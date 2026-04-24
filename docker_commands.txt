@@ -1,0 +1,20 @@
+Docker commands: 
+
+# 1. Start fresh container from original
+docker run -d --name af-lang-patch finchai/askfinch-langgraph:v1.6.9-ubuntu sleep infinity
+
+# 2. Copy files
+docker cp /home/finch-user/lang/config.py af-lang-patch:/app/src/config.py
+docker cp /home/finch-user/lang/openai_compatible_provider.py af-lang-patch:/app/src/providers/openai_compatible_provider.py
+
+# 3. Commit with correct CMD
+docker commit --change='CMD ["./service-start"]' af-lang-patch finchai/askfinch-langgraph:v1.6.9-ubuntu-patched
+
+# 4. Cleanup
+docker rm -f af-lang-patch
+
+Then you can run: docker image ls, and you will see the new image created/existing to use.  
+
+
+ENV CHANGE (add /v1)
+OTHER_LLM_BASE_URL: https://ollama.com/v1
