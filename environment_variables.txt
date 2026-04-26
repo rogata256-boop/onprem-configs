@@ -1,0 +1,6 @@
+OPENAI_BASE_URL="http://127.0.0.1:4000/v1"
+OPENAI_API_KEY="sk-litellm-master" # Make sure key is correct for the local LiteLLM base url
+USE_OTHER_LLM=false
+USE_OLLAMA=false
+USE_BEDROCK=false
+LOG_LEVEL="DEBUG"

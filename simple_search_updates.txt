@@ -1,0 +1,180 @@
+This demonstrates the changes needed to interface with LLM on-prem.
+
+Compare this with the on-site version to create a diff.
+
+-------------------------------------------------------
+import os
+from pydantic import BaseModel
+
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, FewShotChatMessagePromptTemplate
+from langgraph.graph import StateGraph, START, END
+from langchain_core.output_parsers import StrOutputParser
+
+from src.tools.knn_tool import finch_analyst_document_semantic_search
+from src.tools.web_tool import web_search
+from src.prompts.simple_search_prompts import answer_prompt as ap, answer_prompt_web as apw, step_back_prompt as sbp
+from src.prompts.simple_search_prompts import step_back_samples
+from src.state.simple_search_state import SimpleSearchState
+from src.config import Configuration, RunnableConfig
+from src.utils.utils import (
+    get_current_date
+)
+
+import logging
+from nlpcore.finchlogger import FinchLogger
+LOG_LEVEL_NAME = os.environ.get("LOG_LEVEL", "CRITICAL")
+LOG_LEVEL = logging._nameToLevel.get(LOG_LEVEL_NAME, logging.CRITICAL)
+logger = FinchLogger(log_level=LOG_LEVEL)
+
+USE_WEB = os.getenv("USE_WEB","false")
+USE_KNN = os.getenv("USE_KNN","true")
+USE_STEP_BACK = os.getenv("USE_STEP_BACK","true")
+
+class AnswerFormatter(BaseModel):
+    sources_gathered:  list[str]
+    research_result: str
+
+async def do_search(state):
+    """Make simple Search"""
+
+    query = state.get("step_back_prompt") or state["prompt"]
+
+    context_queries = state.get("context_queries", [])
+    if USE_WEB == "true" and not (USE_KNN == "true" and context_queries != None and len(context_queries) > 0):
+        search_result = await web_search.ainvoke(query)
+        sources = [{"url":source["url"],"title":source["title"],"content":source["content"]} for source in search_result["results"]]
+
+    else:
+        sources = await finch_analyst_document_semantic_search.ainvoke(
+            {"prompt": query, "state": state}
+        )
+
+    return {"sources":sources, "step_back_status": True if state.get("step_back_prompt") else False}
+
+def unique_dicts(sources: list[dict]) -> list[dict]:
+    """
+    Return unique sources from the list id sources
+    """
+    return list({
+        tuple(sorted(d.items())): d
+        for d in sources
+    }.values())
+
+async def create_answer(state, config: RunnableConfig):
+
+    """Create answer based on state and state sources"""
+
+    sources = state["sources"]
+
+    # Avoiding duplicating of sources between initial retrieval and step back retrieval
+    sources = unique_dicts(sources)
+    answer = await answer_from_sources(state["prompt"], sources, config)
+    sources_gathered = answer["sources_gathered"]  # Now a flat list
+    if USE_WEB == "true":
+        web_sources = [{"url":x.get('url',""),"title":x.get('title',""),"content":x.get('content',"")} for x in sources]
+        filtered_sources = [{"citationType":"web","citationPayload":source} for source in web_sources if source["url"] in sources_gathered]
+    else:
+        filtered_sources = [{"citationType":"knn","citationPayload":source} for source in sources if source.get("finchDocId") in sources_gathered]
+    return {"research_result": answer["research_result"], "sources_gathered": filtered_sources}
+
+
+async def step_back(state, config: RunnableConfig):
+
+    """Generate Step back question based on the initial one"""
+
+    configurable = Configuration.from_runnable_config(config)
+    prompt = state["prompt"]
+
+    example_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("human", "{input}"),
+            ("ai", "{output}"),
+        ]
+    )
+    few_shot_prompt = FewShotChatMessagePromptTemplate(
+        example_prompt=example_prompt,
+        examples=step_back_samples,
+    )
+
+    step_back_prompt = ChatPromptTemplate.from_messages([
+        ("system", sbp),
+        few_shot_prompt,
+        ("user", "{question}"),
+    ])
+
+    step_back_chain = step_back_prompt  | configurable.get_answer_model() | StrOutputParser()
+    step_back_prompt = await step_back_chain.ainvoke({"question": prompt})
+
+    return {"step_back_prompt": step_back_prompt}
+
+def step_back_condition(state):
+
+    """Define if a step back logic should be executed"""
+
+    if USE_STEP_BACK == "false":
+        return END
+    
+    if (state["research_result"].startswith("Based on the provided search results")
+            and state.get("step_back_status") is not True):
+        return "step_back"
+    return END
+
+
+async def answer_from_sources(query,sources,config: RunnableConfig):
+    """
+    LangGraph node that answers a query based on retrieved information.
+    This is sent to reflection to reflect on the list of answers.
+    """
+    configurable = Configuration.from_runnable_config(config)
+    llm = configurable.get_answer_model(temperature=0.0, max_retries=3, max_tokens=10000)
+
+    if USE_WEB == 'true':
+        answer_prompt_template = apw
+    else:
+        answer_prompt_template = ap
+
+    context = """query:{query}
+        sources: {sources}
+         """#.format(query=query,sources=sources).replace("{","").replace("}","")
+
+    answer_prompt_template += context
+
+    answer_prompt_template = answer_prompt_template.format(current_date=get_current_date(),
+        query=query,sources=sources).replace("{","").replace("}","")
+    answer_prompt = ChatPromptTemplate.from_messages([
+                    ("system", answer_prompt_template),
+                    MessagesPlaceholder(variable_name="messages")
+                ])
+    model_name = getattr(llm, "model_name", getattr(llm, "model", "unknown"))
+    base_url = getattr(llm, "openai_api_base", getattr(llm, "base_url", "default"))
+    logger.warning(f"=== answer_from_sources model ===\n{model_name} @ {base_url}")
+    logger.warning(f"=== answer_from_sources query ===\n{query}")
+    logger.warning(f"=== answer_from_sources prompt ===\n{answer_prompt_template}")
+
+    answer_with_structure = llm.with_structured_output(AnswerFormatter)
+    answer = answer_prompt | answer_with_structure
+    d = {"messages":[],
+         }
+    r = await answer.ainvoke(d)
+
+    return {
+        "sources_gathered": r.sources_gathered,
+        "research_result": r.research_result,
+    }
+
+# Graph initialization
+simple_graph = StateGraph(SimpleSearchState, config_schema=Configuration)
+simple_graph.add_node("search", do_search)
+simple_graph.add_node("generate_answer", create_answer)
+simple_graph.add_node("step_back", step_back)
+
+# Edges
+simple_graph.add_edge(START, "search")
+simple_graph.add_edge("search", "generate_answer")
+simple_graph.add_conditional_edges(
+    "generate_answer", step_back_condition
+)
+simple_graph.add_edge("step_back", "search")
+simple_graph.add_edge("generate_answer", END)
+
+graph = simple_graph.compile()
