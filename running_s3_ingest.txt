@@ -1,0 +1,5 @@
+⏺ Both are fully supported:
+  - Exclude XLS: use --exclude-attachment-types spreadsheet (maps to the xlsx MIME type)
+  - 100K limit: the default is already MAX_MESSAGE_LENGTH = 100_000, so truncation at 100K happens automatically with no extra flag needed
+ 
+Both parameters flow correctly from s3_ingest.py's CLI through to parse_and_translate(). You're good to go.
