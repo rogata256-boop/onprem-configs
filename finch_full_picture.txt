@@ -1,0 +1,39 @@
+⏺ Here's the full picture:
+
+  ---
+  Minimum file set, arranged in a single flat directory:
+
+  finch_clients/
+      __init__.py      ← from finch-clients repo
+      fft.py           ← from finch-clients repo
+      fa.py            ← from finch-clients repo
+  enrich_ingest.py
+  tabular_ingest.py
+  transaction_ingest.py
+  text_ingest.py
+  text_enrich.py
+  eml_translator.py    ← only if you need email processing
+  run_all.sh           ← only if you need email processing
+  translators.py       ← required by eml_translator.py only
+
+  Run with: PYTHONPATH=. (so Python finds the finch_clients/ folder in the current directory)
+
+  ---
+  Third-party dependencies (need to be available on the isolated system):
+
+  ┌─────────────────┬──────────────────────────────────────────┐
+  │     Package     │               Required by                │
+  ├─────────────────┼──────────────────────────────────────────┤
+  │ requests        │ all scripts (via finch_clients)          │
+  ├─────────────────┼──────────────────────────────────────────┤
+  │ pandas          │ tabular_ingest.py, transaction_ingest.py │
+  ├─────────────────┼──────────────────────────────────────────┤
+  │ deep-translator │ eml_translator.py only                   │
+  ├─────────────────┼──────────────────────────────────────────┤
+  │ langdetect      │ eml_translator.py only                   │
+  ├─────────────────┼──────────────────────────────────────────┤
+  │ beautifulsoup4  │ eml_translator.py only                   │
+  └─────────────────┴──────────────────────────────────────────┘
+
+  If you're only running enrich_ingest.py to upload the pre-generated enrichment JSONs, you only need requests —
+  which is almost certainly already present.
